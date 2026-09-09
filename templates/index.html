@@ -265,11 +265,20 @@
                 <button onclick="setStoreFilter('Al Ershad')" id="store-ershad" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Al Ershad</button>
             </div>
 
+            <!-- Price Trend Filter -->
+            <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
+                <button onclick="setTrendFilter('all')" id="trend-all" class="filter-trend-btn px-3 py-1 rounded text-xs font-medium transition bg-sky-500 text-white">All Moves</button>
+                <button onclick="setTrendFilter('dropped')" id="trend-dropped" class="filter-trend-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">🟢 Drops</button>
+                <button onclick="setTrendFilter('increased')" id="trend-increased" class="filter-trend-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">🔴 Increases</button>
+            </div>
+
             <!-- Sort By & Export View -->
             <div class="flex items-center gap-2 w-full md:w-auto justify-end">
                 <span class="text-xs text-slate-400">Sort:</span>
                 <select id="sortSelect" onchange="applyFilters()" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500">
                     <option value="aed_per_tb_asc">Best Value (AED/TB ↑)</option>
+                    <option value="diff_desc">Biggest Price Hike (↑)</option>
+                    <option value="diff_asc">Biggest Price Drop (↓)</option>
                     <option value="price_asc">Price: Low to High</option>
                     <option value="price_desc">Price: High to Low</option>
                     <option value="capacity_desc">Capacity: High to Low</option>
@@ -341,6 +350,7 @@
                         data-renewed="{{ 'true' if d.is_renewed else 'false' }}"
                         data-store="{{ d.store }}"
                         data-model="{{ d.model_number|lower }}"
+                        data-price-diff="{{ d.price_diff }}"
                         onclick="showPriceHistory('{{ d.asin }}')">
                         
                         <!-- Rank & ATL Badge -->
@@ -558,6 +568,22 @@
     }
 
     let activeStore = 'all';
+    let activeTrend = 'all';
+
+    function setTrendFilter(trend) {
+        activeTrend = trend;
+        document.querySelectorAll('.filter-trend-btn').forEach(btn => {
+            btn.classList.remove('bg-sky-500', 'text-white');
+            btn.classList.add('text-slate-400');
+        });
+        const idMap = { 'all': 'trend-all', 'dropped': 'trend-dropped', 'increased': 'trend-increased' };
+        const active = document.getElementById(idMap[trend] || 'trend-all');
+        if (active) {
+            active.classList.add('bg-sky-500', 'text-white');
+            active.classList.remove('text-slate-400');
+        }
+        applyFilters();
+    }
 
     function setStoreFilter(store) {
         activeStore = store;
@@ -615,6 +641,8 @@
             const store = row.getAttribute('data-store') || 'Amazon.ae';
             const model = (row.getAttribute('data-model') || '').toLowerCase();
 
+            const priceDiff = parseFloat(row.getAttribute('data-price-diff') || '0');
+
             let matchesSearch = !query || title.includes(query) || cat.toLowerCase().includes(query) || store.toLowerCase().includes(query) || model.includes(query);
             let matchesStore = (activeStore === 'all') || (store.toLowerCase() === activeStore.toLowerCase());
             let matchesCond = (activeCondition === 'all') ||
@@ -627,7 +655,11 @@
 
             let matchesCat = (activeCategory === 'all') || (cat === activeCategory);
 
-            if (matchesSearch && matchesStore && matchesCond && matchesCap && matchesCat) {
+            let matchesTrend = (activeTrend === 'all') ||
+                               (activeTrend === 'dropped' && priceDiff < -0.1) ||
+                               (activeTrend === 'increased' && priceDiff > 0.1);
+
+            if (matchesSearch && matchesStore && matchesCond && matchesCap && matchesCat && matchesTrend) {
                 row.style.display = '';
                 visibleCount++;
             } else {
@@ -644,8 +676,12 @@
             const bAedTb = parseFloat(b.getAttribute('data-aed-tb'));
             const aCap = parseInt(a.getAttribute('data-capacity'));
             const bCap = parseInt(b.getAttribute('data-capacity'));
+            const aDiff = parseFloat(a.getAttribute('data-price-diff') || '0');
+            const bDiff = parseFloat(b.getAttribute('data-price-diff') || '0');
 
             if (sortVal === 'aed_per_tb_asc') return aAedTb - bAedTb;
+            if (sortVal === 'diff_desc') return bDiff - aDiff;
+            if (sortVal === 'diff_asc') return aDiff - bDiff;
             if (sortVal === 'price_asc') return aPrice - bPrice;
             if (sortVal === 'price_desc') return bPrice - aPrice;
             if (sortVal === 'capacity_desc') return bCap - aCap;
@@ -800,6 +836,7 @@
                     data-renewed="${d.is_renewed ? 'true' : 'false'}"
                     data-store="${d.store || 'Amazon.ae'}"
                     data-model="${(d.model_number || '').toLowerCase()}"
+                    data-price-diff="${d.price_diff || 0}"
                     onclick="showPriceHistory('${d.asin}')">
                     <td class="py-3 px-3 text-center font-mono text-slate-500">${rankHtml}</td>
                     <td class="py-3 px-3 font-medium">${storeBadge}</td>
