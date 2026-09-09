@@ -1,0 +1,9 @@
+playwright
+beautifulsoup4
+fastapi
+uvicorn[standard]
+apscheduler
+rich
+jinja2
+python-multipart
+httpx

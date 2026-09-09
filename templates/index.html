@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0ea5e9">
+    <link rel="manifest" href="/manifest.json">
+    <title>HDD Price Tracker — Amazon.ae</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN for price fluctuation graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: '#0ea5e9',
+                        darkBg: '#0b0f19',
+                        cardBg: '#111827',
+                        borderBg: '#1f2937'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+        .animate-pulse-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0b0f19; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+    </style>
+</head>
+<body class="bg-[#0b0f19] text-slate-100 min-h-screen font-sans antialiased">
+
+<!-- Header -->
+<header class="border-b border-slate-800/80 bg-[#0f172a]/90 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <span class="text-2xl p-1.5 bg-sky-500/10 border border-sky-500/20 rounded-xl">💾</span>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-base font-bold text-white tracking-tight">HDD Price Tracker</h1>
+                    <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">Amazon.ae</span>
+                </div>
+                <p class="text-xs text-slate-400">Live AED/TB monitor for 10TB+ hard drives</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <!-- Scrape status indicator -->
+            <div id="status-badge" class="hidden sm:flex items-center gap-2 text-xs text-slate-400 bg-slate-800/70 border border-slate-700/50 rounded-full px-3 py-1">
+                {% if last_scrape %}
+                    {% if last_scrape.status == 'running' %}
+                        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse-dot"></span>
+                        <span class="text-amber-300 font-medium">Scraping in progress...</span>
+                    {% elif last_scrape.status == 'success' %}
+                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <span>{{ last_scrape.drives_found }} drives · Updated {{ last_scrape.finished_at[11:16] if last_scrape.finished_at else 'N/A' }} UTC</span>
+                    {% else %}
+                        <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                        <span class="text-rose-300">Scrape error</span>
+                    {% endif %}
+                {% else %}
+                    <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+                    <span>No data yet</span>
+                {% endif %}
+            </div>
+
+            <button onclick="triggerScrape()" id="scrape-btn"
+                    class="bg-brand hover:bg-sky-500 active:scale-95 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-lg shadow-sky-500/20 transition flex items-center gap-1.5">
+                <span>🔄</span>
+                <span>Scrape Now</span>
+            </button>
+
+            <a href="/api/export/csv" download="amazon_ae_hdd_deals.csv" id="export-csv-btn"
+               class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 hover:text-white text-xs font-semibold px-3 py-2 rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-sm"
+               title="Export all tracked deals to CSV">
+                <span>📥</span>
+                <span class="hidden sm:inline">Export CSV</span>
+            </a>
+
+            <button onclick="toggleSettings()"
+                    class="text-slate-400 hover:text-white transition p-2 rounded-lg hover:bg-slate-800 border border-transparent hover:border-slate-700">
+                ⚙️
+            </button>
+        </div>
+    </div>
+</header>
+
+<!-- Live Scrape Real-Time Progress Banner -->
+<div id="live-progress-banner" class="hidden bg-[#0a192f] border-b border-sky-500/40 p-3.5 sticky top-[53px] z-30 shadow-lg shadow-sky-950/50 backdrop-blur-md transition-all">
+    <div class="max-w-7xl mx-auto flex flex-col gap-2">
+        <div class="flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2.5">
+                <span class="relative flex h-2.5 w-2.5">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                </span>
+                <span class="font-bold text-sky-300 uppercase tracking-wider text-[11px]">Live Scraper Running:</span>
+                <span id="progress-query" class="text-slate-200 font-mono font-medium truncate max-w-xs sm:max-w-md">Initializing...</span>
+            </div>
+            <div class="flex items-center gap-3 font-mono">
+                <span id="progress-count" class="text-emerald-400 font-semibold text-xs">0 drives cataloged</span>
+                <span id="progress-pct" class="font-black text-sky-400 text-sm">0%</span>
+            </div>
+        </div>
+        <!-- Progress track -->
+        <div class="w-full bg-slate-800/90 rounded-full h-2.5 overflow-hidden border border-slate-700/60 p-0.5">
+            <div id="progress-bar-fill" class="bg-gradient-to-r from-sky-500 via-teal-400 to-emerald-400 h-full rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-slate-400">
+            <span id="progress-step-text">Searching Amazon.ae...</span>
+            <span class="text-slate-400">Page auto-refreshes on completion</span>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Drawer -->
+<div id="settings-panel" class="hidden bg-slate-900 border-b border-slate-800 transition">
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                <span>⚙️ Tracker & Telegram Alert Configuration</span>
+            </h2>
+            <button onclick="toggleSettings()" class="text-slate-400 hover:text-white text-xs">✕ Close</button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-xs text-slate-400 mb-1">Scrape Schedule (Hours)</label>
+                <input type="number" id="set-interval" value="{{ settings.get('scrape_interval_hours', '6') }}" min="1" max="48"
+                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+                <span class="text-[11px] text-slate-500">Default: Every 6 hours</span>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-400 mb-1">Price Alert Target (AED / TB)</label>
+                <input type="number" id="set-threshold" value="{{ settings.get('alert_aed_per_tb_threshold', '100') }}"
+                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+                <span class="text-[11px] text-slate-500">Sends alert when any drive drops below this value</span>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-400 mb-1">Min Drive Capacity (TB)</label>
+                <input type="number" id="set-min-tb" value="{{ settings.get('min_capacity_tb', '10') }}" min="8" max="30"
+                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+                <span class="text-[11px] text-slate-500">Filters out smaller drives</span>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-400 mb-1">Telegram Bot Token</label>
+                <input type="text" id="set-tg-token" value="{{ settings.get('telegram_bot_token', '') }}"
+                       placeholder="e.g. 7123456:AAFd987..."
+                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-sky-500">
+                <span class="text-[11px] text-slate-500">Get free from @BotFather on Telegram</span>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-400 mb-1">Telegram Chat ID</label>
+                <input type="text" id="set-tg-chat" value="{{ settings.get('telegram_chat_id', '') }}"
+                       placeholder="e.g. 123456789"
+                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-sky-500">
+                <span class="text-[11px] text-slate-500">Your user or group Chat ID</span>
+            </div>
+            <div class="flex flex-col justify-end gap-2">
+                <label class="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
+                    <input type="checkbox" id="set-alerts-enabled"
+                           {{ 'checked' if settings.get('alerts_enabled') == 'true' else '' }}
+                           class="w-4 h-4 rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-sky-500 focus:ring-offset-slate-900">
+                    <span>Enable Telegram Notifications</span>
+                </label>
+                <div class="flex items-center gap-2">
+                    <button onclick="saveSettings(event)"
+                            class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">
+                        💾 Save Settings
+                    </button>
+                    <button onclick="testTelegramAlert(event)"
+                            class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium px-3 py-2 rounded-lg border border-slate-700 transition">
+                        🔔 Test Alert
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="test-alert-status" class="mt-2 text-xs hidden"></div>
+    </div>
+</div>
+
+<div class="max-w-7xl mx-auto px-4 py-5 space-y-5">
+
+    <!-- KPI Summary Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <!-- Best Deal Card -->
+        <div class="bg-gradient-to-br from-emerald-950/40 to-slate-900 border border-emerald-500/20 rounded-xl p-4 flex flex-col justify-between">
+            <span class="text-xs text-emerald-400 font-semibold uppercase tracking-wider">🏆 Best Value Right Now</span>
+            <div class="mt-2">
+                <div class="flex items-baseline gap-1">
+                    <span id="kpi-best-val" class="text-2xl font-black text-emerald-300 font-mono">{{ "%.1f"|format(stats.best_deal.aed_per_tb) if stats.best_deal else '--' }}</span>
+                    <span class="text-xs text-emerald-400/80 font-mono">AED/TB</span>
+                </div>
+                <p id="kpi-best-title" class="text-xs text-slate-300 mt-1 truncate" title="{{ stats.best_deal.title if stats.best_deal else '' }}">
+                    {{ stats.best_deal.capacity if stats.best_deal else '' }}TB · {{ stats.best_deal.title if stats.best_deal else 'N/A' }}
+                </p>
+            </div>
+        </div>
+
+        <!-- All-Time Lows Card -->
+        <div class="bg-gradient-to-br from-amber-950/30 to-slate-900 border border-amber-500/20 rounded-xl p-4 flex flex-col justify-between">
+            <span class="text-xs text-amber-400 font-semibold uppercase tracking-wider">🔥 All-Time Lows</span>
+            <div class="mt-2">
+                <div class="flex items-baseline gap-1">
+                    <span id="kpi-atls" class="text-2xl font-black text-amber-300 font-mono">{{ stats.all_time_lows }}</span>
+                    <span class="text-xs text-slate-400">drives at lowest price</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Historically cheapest in your DB</p>
+            </div>
+        </div>
+
+        <!-- Under 100 AED/TB Card -->
+        <div class="bg-gradient-to-br from-sky-950/30 to-slate-900 border border-sky-500/20 rounded-xl p-4 flex flex-col justify-between">
+            <span class="text-xs text-sky-400 font-semibold uppercase tracking-wider">⚡ Sweet Spot Deals</span>
+            <div class="mt-2">
+                <div class="flex items-baseline gap-1">
+                    <span id="kpi-under-100" class="text-2xl font-black text-sky-300 font-mono">{{ stats.drives_under_100 }}</span>
+                    <span class="text-xs text-slate-400">under 100 AED/TB</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Prime candidates for your NAS</p>
+            </div>
+        </div>
+
+        <!-- Total Tracked Card -->
+        <div class="bg-gradient-to-br from-purple-950/30 to-slate-900 border border-purple-500/20 rounded-xl p-4 flex flex-col justify-between">
+            <span class="text-xs text-purple-400 font-semibold uppercase tracking-wider">📦 Total Monitored</span>
+            <div class="mt-2">
+                <div class="flex items-baseline gap-1">
+                    <span id="kpi-total" class="text-2xl font-black text-purple-300 font-mono">{{ stats.total_drives }}</span>
+                    <span class="text-xs text-slate-400">unique listings</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">1TB to 28TB on Amazon.ae</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters & Instant Search Bar -->
+    <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+        <div class="flex flex-col md:flex-row gap-3 items-center justify-between">
+            <!-- Search input -->
+            <div class="relative w-full md:w-96">
+                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">🔎</span>
+                <input type="text" id="searchInput" oninput="applyFilters()"
+                       placeholder="Filter by title, brand, model (e.g. Exos, Toshiba, Elements)..."
+                       class="w-full bg-slate-800/80 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 transition">
+            </div>
+
+            <!-- Condition Filter -->
+            <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
+                <button onclick="setConditionFilter('all')" id="cond-all" class="filter-cond-btn px-3 py-1 rounded text-xs font-medium transition bg-sky-500 text-white">All Cond</button>
+                <button onclick="setConditionFilter('new')" id="cond-new" class="filter-cond-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">New Only</button>
+                <button onclick="setConditionFilter('renewed')" id="cond-renewed" class="filter-cond-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Renewed</button>
+            </div>
+
+            <!-- Store Filter -->
+            <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
+                <button onclick="setStoreFilter('all')" id="store-all" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition bg-sky-500 text-white">All Stores</button>
+                <button onclick="setStoreFilter('Amazon.ae')" id="store-amazon" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Amazon.ae</button>
+                <button onclick="setStoreFilter('Microless')" id="store-microless" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Microless</button>
+                <button onclick="setStoreFilter('Al Ershad')" id="store-ershad" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Al Ershad</button>
+            </div>
+
+            <!-- Sort By & Export View -->
+            <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+                <span class="text-xs text-slate-400">Sort:</span>
+                <select id="sortSelect" onchange="applyFilters()" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500">
+                    <option value="aed_per_tb_asc">Best Value (AED/TB ↑)</option>
+                    <option value="price_asc">Price: Low to High</option>
+                    <option value="price_desc">Price: High to Low</option>
+                    <option value="capacity_desc">Capacity: High to Low</option>
+                </select>
+                <button onclick="exportFilteredToCSV()"
+                        class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs font-medium transition flex items-center gap-1 shadow-sm"
+                        title="Export current filtered view to CSV">
+                    <span>📄</span>
+                    <span>Export View</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Filter Pills (Capacity & Category) -->
+        <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/70 text-xs">
+            <span class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mr-1">Capacity:</span>
+            <button onclick="setCapacityFilter('all')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30" data-cap="all">All</button>
+            <button onclick="setCapacityFilter('1')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="1">1TB</button>
+            <button onclick="setCapacityFilter('2')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="2">2TB</button>
+            <button onclick="setCapacityFilter('3')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="3">3TB</button>
+            <button onclick="setCapacityFilter('4')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="4">4TB</button>
+            <button onclick="setCapacityFilter('6')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="6">6TB</button>
+            <button onclick="setCapacityFilter('8')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="8">8TB</button>
+            <button onclick="setCapacityFilter('10')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="10">10TB</button>
+            <button onclick="setCapacityFilter('12')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="12">12TB</button>
+            <button onclick="setCapacityFilter('14')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="14">14TB</button>
+            <button onclick="setCapacityFilter('16')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="16">16TB</button>
+            <button onclick="setCapacityFilter('18')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="18">18TB</button>
+            <button onclick="setCapacityFilter('20+')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="20+">20TB+</button>
+
+            <span class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider ml-4 mr-1">Type:</span>
+            <button onclick="setCategoryFilter('all')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30" data-cat="all">All</button>
+            <button onclick="setCategoryFilter('Enterprise')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="Enterprise">Enterprise</button>
+            <button onclick="setCategoryFilter('NAS')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="NAS">NAS</button>
+            <button onclick="setCategoryFilter('External')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="External">External (Shuckable)</button>
+            <button onclick="setCategoryFilter('Surveillance')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="Surveillance">Surveillance</button>
+
+            <span id="filtered-count" class="ml-auto text-slate-500 text-xs">Showing {{ deals|length }} drives</span>
+        </div>
+    </div>
+
+    <!-- Deals Table -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs" id="dealsTable">
+                <thead class="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold text-[11px] tracking-wider">
+                    <tr>
+                        <th class="py-3 px-3 text-center w-12">#</th>
+                        <th class="py-3 px-3 w-28">Store</th>
+                        <th class="py-3 px-3">Drive Description</th>
+                        <th class="py-3 px-3 w-28">Category</th>
+                        <th class="py-3 px-3 w-16 text-right">Size</th>
+                        <th class="py-3 px-3 w-28 text-right">Price (AED)</th>
+                        <th class="py-3 px-3 w-24 text-right">AED / TB</th>
+                        <th class="py-3 px-3 w-32 text-right">4-Bay RAID 5</th>
+                        <th class="py-3 px-3 w-20 text-center">Cond</th>
+                        <th class="py-3 px-3 w-24 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60" id="dealsTbody">
+                    {% for d in deals %}
+                    <tr class="deal-row hover:bg-slate-800/50 transition cursor-pointer"
+                        data-asin="{{ d.asin }}"
+                        data-title="{{ d.title|lower }}"
+                        data-capacity="{{ d.capacity_tb }}"
+                        data-category="{{ d.category }}"
+                        data-price="{{ d.price_aed }}"
+                        data-aed-tb="{{ d.aed_per_tb }}"
+                        data-renewed="{{ 'true' if d.is_renewed else 'false' }}"
+                        data-store="{{ d.store }}"
+                        data-model="{{ d.model_number|lower }}"
+                        onclick="showPriceHistory('{{ d.asin }}')">
+                        
+                        <!-- Rank & ATL Badge -->
+                        <td class="py-3 px-3 text-center font-mono text-slate-500">
+                            {% if d.is_all_time_low %}
+                            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30" title="At lowest price ever recorded!">
+                                🔥 {{ loop.index }}
+                            </span>
+                            {% else %}
+                            {{ loop.index }}
+                            {% endif %}
+                        </td>
+
+                        <!-- Store Badge -->
+                        <td class="py-3 px-3 font-medium">
+                            {% if d.store == 'Microless' %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                🔴 Microless
+                            </span>
+                            {% elif d.store == 'Al Ershad' %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                🟣 Al Ershad
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                📦 Amazon.ae
+                            </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Title + Model + Shuckable + Link -->
+                        <td class="py-3 px-3">
+                            <div class="flex items-start gap-1.5">
+                                <div>
+                                    <span class="text-slate-100 font-medium hover:text-sky-300 transition">{{ d.title }}</span>
+                                    <div class="flex items-center flex-wrap gap-1.5 mt-0.5">
+                                        {% if d.model_number %}
+                                        <span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-slate-800 text-sky-400 border border-sky-500/30" title="Manufacturer Model Number">
+                                            MPN: {{ d.model_number }}
+                                        </span>
+                                        {% endif %}
+                                        {% if d.is_shuckable %}
+                                        <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                                            ⚡ Shuckable
+                                        </span>
+                                        {% endif %}
+                                        {% if d.recording_tech == 'CMR ✅' %}
+                                        <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                                            CMR ✅ RAID Safe
+                                        </span>
+                                        {% elif d.recording_tech == 'SMR ⚠️' %}
+                                        <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                            SMR ⚠️ Avoid for RAID
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <!-- Category -->
+                        <td class="py-3 px-3">
+                            {% if d.category == 'Enterprise' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30">Enterprise</span>
+                            {% elif d.category == 'NAS' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">NAS</span>
+                            {% elif d.category == 'External' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">External</span>
+                            {% elif d.category == 'Surveillance' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">Surveillance</span>
+                            {% else %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-700/60 text-slate-300">Internal</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Capacity -->
+                        <td class="py-3 px-3 text-right font-mono font-bold text-slate-200">
+                            {{ d.capacity_tb }}TB
+                        </td>
+
+                        <!-- Price + Fluctuation Delta -->
+                        <td class="py-3 px-3 text-right font-mono">
+                            <div class="text-amber-300 font-bold text-sm">AED {{ "%.2f"|format(d.price_aed) }}</div>
+                            {% if d.price_diff < 0 %}
+                            <div class="text-[10px] text-emerald-400 font-semibold" title="Dropped since previous check">
+                                ↓ AED {{ "%.0f"|format(d.price_diff|abs) }} ({{ d.pct_diff }}%)
+                            </div>
+                            {% elif d.price_diff > 0 %}
+                            <div class="text-[10px] text-rose-400 font-semibold" title="Rose since previous check">
+                                ↑ AED {{ "%.0f"|format(d.price_diff) }} (+{{ d.pct_diff }}%)
+                            </div>
+                            {% endif %}
+                        </td>
+
+                        <!-- AED / TB -->
+                        <td class="py-3 px-3 text-right font-mono">
+                            <span class="px-2 py-1 rounded text-xs font-black
+                                {% if d.aed_per_tb <= 100 %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/40
+                                {% elif d.aed_per_tb <= 120 %}bg-sky-500/20 text-sky-300 border border-sky-500/30
+                                {% elif d.aed_per_tb <= 150 %}bg-yellow-500/20 text-yellow-300 border border-yellow-500/30
+                                {% else %}bg-rose-500/20 text-rose-300 border border-rose-500/30{% endif %}">
+                                {{ "%.2f"|format(d.aed_per_tb) }}
+                            </span>
+                        </td>
+
+                        <!-- 4-Bay RAID 5 Pack (Cost & Net Usable) -->
+                        <td class="py-3 px-3 text-right font-mono">
+                            <div class="text-sky-300 font-bold text-xs">AED {{ "%.0f"|format(d.raid5_pack_cost) }}</div>
+                            <div class="text-[10px] text-slate-400">4x · {{ d.raid5_usable_tb }}TB Net</div>
+                        </td>
+
+                        <!-- Condition -->
+                        <td class="py-3 px-3 text-center font-medium">
+                            {% if d.is_renewed %}
+                                <span class="text-amber-400/90 text-[11px] bg-amber-500/10 px-1.5 py-0.5 rounded">Renewed</span>
+                            {% else %}
+                                <span class="text-emerald-400 text-[11px] bg-emerald-500/10 px-1.5 py-0.5 rounded">New</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Actions -->
+                        <td class="py-3 px-3 text-center" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-center gap-1.5">
+                                <button onclick="showPriceHistory('{{ d.asin }}')" class="p-1.5 hover:bg-slate-800 rounded text-slate-300 hover:text-sky-400 transition" title="View Price History Chart">
+                                    📈
+                                </button>
+                                <a href="{{ d.url }}" target="_blank" rel="noopener" class="p-1.5 hover:bg-slate-800 rounded text-sky-400 hover:text-sky-300 transition" title="Open on Amazon.ae">
+                                    🔗
+                                </a>
+                                <button onclick="hideListing('{{ d.asin }}', event)" class="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-rose-400 transition" title="Hide / Blacklist this listing">
+                                    🚫
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Price History Chart Modal -->
+<div id="historyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl overflow-hidden relative">
+        <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">✕</button>
+
+        <div class="mb-4">
+            <span id="modal-category" class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">Category</span>
+            <h3 id="modal-title" class="text-base font-bold text-white mt-2 leading-tight">Drive Title</h3>
+            <p id="modal-asin" class="text-xs text-slate-500 font-mono mt-0.5">ASIN: ---</p>
+        </div>
+
+        <!-- Metric badges -->
+        <div class="grid grid-cols-4 gap-2 mb-5">
+            <div class="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/50">
+                <span class="text-[10px] text-slate-400 uppercase">Current</span>
+                <p id="stat-current" class="text-sm font-bold font-mono text-amber-300">--</p>
+            </div>
+            <div class="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/50">
+                <span class="text-[10px] text-slate-400 uppercase">Lowest Ever</span>
+                <p id="stat-lowest" class="text-sm font-bold font-mono text-emerald-400">--</p>
+            </div>
+            <div class="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/50">
+                <span class="text-[10px] text-slate-400 uppercase">Highest Ever</span>
+                <p id="stat-highest" class="text-sm font-bold font-mono text-rose-400">--</p>
+            </div>
+            <div class="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/50">
+                <span class="text-[10px] text-slate-400 uppercase">Tracked Checks</span>
+                <p id="stat-points" class="text-sm font-bold font-mono text-slate-200">--</p>
+            </div>
+        </div>
+
+        <!-- Chart Container -->
+        <div class="h-64 w-full">
+            <canvas id="priceChartCanvas"></canvas>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="mt-5 flex items-center justify-between pt-4 border-t border-slate-800 text-xs">
+            <span class="text-slate-500">History tracked locally in SQLite</span>
+            <a id="modal-amazon-link" href="#" target="_blank" rel="noopener"
+               class="bg-brand hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded-lg transition flex items-center gap-1.5">
+                <span>View on Amazon.ae</span>
+                <span>↗</span>
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+    }
+
+    let activeCondition = 'all';
+    let activeCapacity = 'all';
+    let activeCategory = 'all';
+    let priceChart = null;
+
+    function toggleSettings() {
+        document.getElementById('settings-panel').classList.toggle('hidden');
+    }
+
+    function setConditionFilter(cond) {
+        activeCondition = cond;
+        document.querySelectorAll('.filter-cond-btn').forEach(btn => {
+            btn.classList.remove('bg-sky-500', 'text-white');
+            btn.classList.add('text-slate-400');
+        });
+        const active = document.getElementById(`cond-${cond}`);
+        active.classList.add('bg-sky-500', 'text-white');
+        active.classList.remove('text-slate-400');
+        applyFilters();
+    }
+
+    let activeStore = 'all';
+
+    function setStoreFilter(store) {
+        activeStore = store;
+        document.querySelectorAll('.filter-store-btn').forEach(btn => {
+            btn.classList.remove('bg-sky-500', 'text-white');
+            btn.classList.add('text-slate-400');
+        });
+        const idMap = { 'all': 'store-all', 'Amazon.ae': 'store-amazon', 'Microless': 'store-microless', 'Al Ershad': 'store-ershad' };
+        const active = document.getElementById(idMap[store] || 'store-all');
+        if (active) {
+            active.classList.add('bg-sky-500', 'text-white');
+            active.classList.remove('text-slate-400');
+        }
+        applyFilters();
+    }
+
+    function setCapacityFilter(cap) {
+        activeCapacity = cap;
+        document.querySelectorAll('.cap-pill').forEach(btn => {
+            btn.classList.remove('bg-sky-500/20', 'text-sky-400', 'border-sky-500/30');
+            btn.classList.add('bg-slate-800', 'text-slate-300', 'border-slate-700');
+            if (btn.getAttribute('data-cap') === cap) {
+                btn.classList.add('bg-sky-500/20', 'text-sky-400', 'border-sky-500/30');
+                btn.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+            }
+        });
+        applyFilters();
+    }
+
+    function setCategoryFilter(cat) {
+        activeCategory = cat;
+        document.querySelectorAll('.cat-pill').forEach(btn => {
+            btn.classList.remove('bg-sky-500/20', 'text-sky-400', 'border-sky-500/30');
+            btn.classList.add('bg-slate-800', 'text-slate-300', 'border-slate-700');
+            if (btn.getAttribute('data-cat') === cat) {
+                btn.classList.add('bg-sky-500/20', 'text-sky-400', 'border-sky-500/30');
+                btn.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+            }
+        });
+        applyFilters();
+    }
+
+    function applyFilters() {
+        const query = document.getElementById('searchInput').value.toLowerCase().trim();
+        const rows = Array.from(document.querySelectorAll('.deal-row'));
+        const sortVal = document.getElementById('sortSelect').value;
+
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const title = row.getAttribute('data-title');
+            const cap = parseInt(row.getAttribute('data-capacity'));
+            const cat = row.getAttribute('data-category');
+            const isRenewed = row.getAttribute('data-renewed') === 'true';
+            const store = row.getAttribute('data-store') || 'Amazon.ae';
+            const model = (row.getAttribute('data-model') || '').toLowerCase();
+
+            let matchesSearch = !query || title.includes(query) || cat.toLowerCase().includes(query) || store.toLowerCase().includes(query) || model.includes(query);
+            let matchesStore = (activeStore === 'all') || (store.toLowerCase() === activeStore.toLowerCase());
+            let matchesCond = (activeCondition === 'all') ||
+                              (activeCondition === 'new' && !isRenewed) ||
+                              (activeCondition === 'renewed' && isRenewed);
+            
+            let matchesCap = (activeCapacity === 'all') ||
+                             (activeCapacity === '20+' && cap >= 20) ||
+                             (parseInt(activeCapacity) === cap);
+
+            let matchesCat = (activeCategory === 'all') || (cat === activeCategory);
+
+            if (matchesSearch && matchesStore && matchesCond && matchesCap && matchesCat) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        // Sorting
+        const tbody = document.getElementById('dealsTbody');
+        rows.sort((a, b) => {
+            const aPrice = parseFloat(a.getAttribute('data-price'));
+            const bPrice = parseFloat(b.getAttribute('data-price'));
+            const aAedTb = parseFloat(a.getAttribute('data-aed-tb'));
+            const bAedTb = parseFloat(b.getAttribute('data-aed-tb'));
+            const aCap = parseInt(a.getAttribute('data-capacity'));
+            const bCap = parseInt(b.getAttribute('data-capacity'));
+
+            if (sortVal === 'aed_per_tb_asc') return aAedTb - bAedTb;
+            if (sortVal === 'price_asc') return aPrice - bPrice;
+            if (sortVal === 'price_desc') return bPrice - aPrice;
+            if (sortVal === 'capacity_desc') return bCap - aCap;
+            return 0;
+        });
+
+        rows.forEach(row => tbody.appendChild(row));
+        document.getElementById('filtered-count').textContent = `Showing ${visibleCount} drives`;
+    }
+
+    async function showPriceHistory(asin) {
+        const modal = document.getElementById('historyModal');
+        modal.classList.remove('hidden');
+
+        try {
+            const res = await fetch(`/api/history/${asin}`);
+            const data = await res.json();
+            
+            document.getElementById('modal-title').textContent = data.drive ? data.drive.title : 'Drive History';
+            document.getElementById('modal-asin').textContent = `ASIN: ${asin}`;
+            document.getElementById('modal-category').textContent = data.drive ? data.drive.category : 'HDD';
+            document.getElementById('modal-amazon-link').href = data.drive ? data.drive.url : `https://www.amazon.ae/dp/${asin}`;
+
+            const stats = data.stats || {};
+            document.getElementById('stat-current').textContent = stats.current ? `AED ${stats.current.toFixed(2)}` : '--';
+            document.getElementById('stat-lowest').textContent = stats.lowest ? `AED ${stats.lowest.toFixed(2)}` : '--';
+            document.getElementById('stat-highest').textContent = stats.highest ? `AED ${stats.highest.toFixed(2)}` : '--';
+            document.getElementById('stat-points').textContent = stats.data_points || '1';
+
+            renderChart(data.history || []);
+        } catch (e) {
+            console.error('Error fetching history:', e);
+        }
+    }
+
+    function renderChart(history) {
+        const ctx = document.getElementById('priceChartCanvas').getContext('2d');
+        if (priceChart) priceChart.destroy();
+
+        const labels = history.map(h => new Date(h.scraped_at).toLocaleDateString(undefined, {month: 'short', day: 'numeric', hour: '2-digit'}));
+        const prices = history.map(h => h.price_aed);
+
+        priceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Price (AED)',
+                    data: prices,
+                    borderColor: '#0ea5e9',
+                    backgroundColor: 'rgba(14, 165, 233, 0.12)',
+                    borderWidth: 2.5,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#38bdf8'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) { return `AED ${context.parsed.y.toFixed(2)}`; }
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } },
+                    y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', callback: val => `AED ${val}` } }
+                }
+            }
+        });
+    }
+
+    function closeModal() {
+        document.getElementById('historyModal').classList.add('hidden');
+    }
+
+    window.onclick = function(event) {
+        const modal = document.getElementById('historyModal');
+        if (event.target === modal) closeModal();
+    };
+
+    let isTrackingProgress = false;
+    let progressPollTimer = null;
+    let lastDrivesCount = 0;
+
+    async function refreshDealsTable() {
+        try {
+            const res = await fetch('/api/deals?min_tb=1');
+            const deals = await res.json();
+            if (!deals || deals.length === 0) return;
+
+            const tbody = document.getElementById('dealsTbody');
+            let html = '';
+            deals.forEach((d, idx) => {
+                const isAtl = d.is_all_time_low;
+                const rankHtml = isAtl 
+                    ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30" title="At lowest price ever recorded!">🔥 ${idx + 1}</span>`
+                    : `${idx + 1}`;
+                
+                let shuckHtml = d.is_shuckable ? `<span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">⚡ Shuckable</span>` : '';
+                let recHtml = '';
+                if (d.recording_tech === 'CMR ✅') {
+                    recHtml = `<span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">CMR ✅ RAID Safe</span>`;
+                } else if (d.recording_tech === 'SMR ⚠️') {
+                    recHtml = `<span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30">SMR ⚠️ Avoid for RAID</span>`;
+                }
+
+                let catBadge = '';
+                if (d.category === 'Enterprise') catBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30">Enterprise</span>';
+                else if (d.category === 'NAS') catBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">NAS</span>';
+                else if (d.category === 'External') catBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">External</span>';
+                else if (d.category === 'Surveillance') catBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">Surveillance</span>';
+                else catBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-700/60 text-slate-300">Internal</span>';
+
+                let deltaHtml = '';
+                if (d.price_diff < 0) deltaHtml = `<div class="text-[10px] text-emerald-400 font-semibold">↓ AED ${Math.abs(d.price_diff).toFixed(0)} (${d.pct_diff}%)</div>`;
+                else if (d.price_diff > 0) deltaHtml = `<div class="text-[10px] text-rose-400 font-semibold">↑ AED ${d.price_diff.toFixed(0)} (+${d.pct_diff}%)</div>`;
+
+                let aedTbColor = d.aed_per_tb <= 100 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+                                 d.aed_per_tb <= 120 ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' :
+                                 d.aed_per_tb <= 150 ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
+                                 'bg-rose-500/20 text-rose-300 border border-rose-500/30';
+
+                let condHtml = d.is_renewed 
+                    ? '<span class="text-amber-400/90 text-[11px] bg-amber-500/10 px-1.5 py-0.5 rounded">Renewed</span>'
+                    : '<span class="text-emerald-400 text-[11px] bg-emerald-500/10 px-1.5 py-0.5 rounded">New</span>';
+
+                let storeBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">📦 Amazon.ae</span>';
+                if (d.store === 'Microless') {
+                    storeBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">🔴 Microless</span>';
+                } else if (d.store === 'Al Ershad') {
+                    storeBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">🟣 Al Ershad</span>';
+                }
+
+                let modelHtml = d.model_number 
+                    ? `<span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-slate-800 text-sky-400 border border-sky-500/30" title="Manufacturer Model Number">MPN: ${d.model_number}</span>`
+                    : '';
+
+                html += `
+                <tr class="deal-row hover:bg-slate-800/50 transition cursor-pointer"
+                    data-asin="${d.asin}"
+                    data-title="${(d.title || '').toLowerCase()}"
+                    data-capacity="${d.capacity_tb}"
+                    data-category="${d.category}"
+                    data-price="${d.price_aed}"
+                    data-aed-tb="${d.aed_per_tb}"
+                    data-renewed="${d.is_renewed ? 'true' : 'false'}"
+                    data-store="${d.store || 'Amazon.ae'}"
+                    data-model="${(d.model_number || '').toLowerCase()}"
+                    onclick="showPriceHistory('${d.asin}')">
+                    <td class="py-3 px-3 text-center font-mono text-slate-500">${rankHtml}</td>
+                    <td class="py-3 px-3 font-medium">${storeBadge}</td>
+                    <td class="py-3 px-3">
+                        <div class="flex items-start gap-1.5">
+                            <div>
+                                <span class="text-slate-100 font-medium hover:text-sky-300 transition">${d.title}</span>
+                                <div class="flex items-center flex-wrap gap-1.5 mt-0.5">${modelHtml} ${shuckHtml} ${recHtml}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="py-3 px-3">${catBadge}</td>
+                    <td class="py-3 px-3 text-right font-mono font-bold text-slate-200">${d.capacity_tb}TB</td>
+                    <td class="py-3 px-3 text-right font-mono">
+                        <div class="text-amber-300 font-bold text-sm">AED ${d.price_aed.toFixed(2)}</div>
+                        ${deltaHtml}
+                    </td>
+                    <td class="py-3 px-3 text-right font-mono">
+                        <span class="px-2 py-1 rounded text-xs font-black ${aedTbColor}">
+                            ${d.aed_per_tb.toFixed(2)}
+                        </span>
+                    </td>
+                    <td class="py-3 px-3 text-right font-mono">
+                        <div class="text-sky-300 font-bold text-xs">AED ${(d.raid5_pack_cost || 0).toFixed(0)}</div>
+                        <div class="text-[10px] text-slate-400">4x · ${d.raid5_usable_tb || 0}TB Net</div>
+                    </td>
+                    <td class="py-3 px-3 text-center font-medium">${condHtml}</td>
+                    <td class="py-3 px-3 text-center" onclick="event.stopPropagation()">
+                        <div class="flex items-center justify-center gap-1.5">
+                            <button onclick="showPriceHistory('${d.asin}')" class="p-1.5 hover:bg-slate-800 rounded text-slate-300 hover:text-sky-400 transition" title="View Price History Chart">📈</button>
+                            <a href="${d.url}" target="_blank" rel="noopener" class="p-1.5 hover:bg-slate-800 rounded text-sky-400 hover:text-sky-300 transition" title="Open on Amazon.ae">🔗</a>
+                            <button onclick="hideListing('${d.asin}', event)" class="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-rose-400 transition" title="Hide / Blacklist this listing">🚫</button>
+                        </div>
+                    </td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+            applyFilters();
+
+            // Refresh KPI Stats live
+            const statsRes = await fetch('/api/stats');
+            const stats = await statsRes.json();
+            if (stats) {
+                if (stats.best_deal) {
+                    document.getElementById('kpi-best-val').textContent = stats.best_deal.aed_per_tb.toFixed(1);
+                    document.getElementById('kpi-best-title').textContent = `${stats.best_deal.capacity}TB · ${stats.best_deal.title}`;
+                }
+                document.getElementById('kpi-atls').textContent = stats.all_time_lows || 0;
+                document.getElementById('kpi-under-100').textContent = stats.drives_under_100 || 0;
+                document.getElementById('kpi-total').textContent = stats.total_drives || deals.length;
+            }
+        } catch (e) {
+            console.error('Error streaming deals:', e);
+        }
+    }
+
+    async function checkScrapeProgress() {
+        try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            const live = data.live_scrape || {};
+            const banner = document.getElementById('live-progress-banner');
+            const btn = document.getElementById('scrape-btn');
+
+            if (live.is_running) {
+                isTrackingProgress = true;
+                banner.classList.remove('hidden');
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳</span><span>Scraping...</span>';
+                btn.classList.add('opacity-60');
+
+                document.getElementById('progress-query').textContent = live.current_query || 'Starting searches...';
+                document.getElementById('progress-count').textContent = `${live.drives_found || 0} drives cataloged`;
+                document.getElementById('progress-pct').textContent = `${live.pct || 0}%`;
+                document.getElementById('progress-bar-fill').style.width = `${live.pct || 0}%`;
+                document.getElementById('progress-step-text').textContent = `Query ${live.current_index} of ${live.total_queries}`;
+
+                // If new drives arrived, stream them into the table right now!
+                if (live.drives_found > lastDrivesCount) {
+                    lastDrivesCount = live.drives_found;
+                    refreshDealsTable();
+                }
+            } else if (isTrackingProgress) {
+                // Was running and just completed!
+                isTrackingProgress = false;
+                banner.classList.remove('hidden');
+                document.getElementById('progress-pct').textContent = '100%';
+                document.getElementById('progress-bar-fill').style.width = '100%';
+                document.getElementById('progress-step-text').textContent = '✅ Scrape complete! All deals updated live.';
+                document.getElementById('progress-query').textContent = 'Finished cataloging.';
+                
+                await refreshDealsTable();
+                if (progressPollTimer) clearInterval(progressPollTimer);
+                setTimeout(() => {
+                    banner.classList.add('hidden');
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>🔄</span><span>Scrape Now</span>';
+                    btn.classList.remove('opacity-60');
+                }, 3000);
+            } else {
+                banner.classList.add('hidden');
+                btn.disabled = false;
+                btn.innerHTML = '<span>🔄</span><span>Scrape Now</span>';
+                btn.classList.remove('opacity-60');
+            }
+        } catch (e) {
+            console.error('Error checking scrape progress:', e);
+        }
+    }
+
+    async function triggerScrape() {
+        const btn = document.getElementById('scrape-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Starting...</span>';
+        btn.classList.add('opacity-60');
+        document.getElementById('live-progress-banner').classList.remove('hidden');
+        document.getElementById('progress-query').textContent = 'Initializing Amazon.ae Playwright session...';
+        lastDrivesCount = 0;
+
+        try {
+            await fetch('/api/scrape', { method: 'POST' });
+            isTrackingProgress = true;
+            if (progressPollTimer) clearInterval(progressPollTimer);
+            progressPollTimer = setInterval(checkScrapeProgress, 1200);
+        } catch (e) {
+            btn.innerHTML = '<span>🔄</span><span>Scrape Now</span>';
+            btn.disabled = false;
+            btn.classList.remove('opacity-60');
+        }
+    }
+
+    // Start background check on page load in case a scrape is already running
+    progressPollTimer = setInterval(checkScrapeProgress, 1500);
+    checkScrapeProgress();
+
+    async function saveSettings(e) {
+        const btn = e.target;
+        const origText = btn.textContent;
+        const data = {
+            scrape_interval_hours: document.getElementById('set-interval').value,
+            alert_aed_per_tb_threshold: document.getElementById('set-threshold').value,
+            min_capacity_tb: document.getElementById('set-min-tb').value,
+            telegram_bot_token: document.getElementById('set-tg-token').value,
+            telegram_chat_id: document.getElementById('set-tg-chat').value,
+            alerts_enabled: document.getElementById('set-alerts-enabled').checked ? 'true' : 'false',
+        };
+        await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        btn.textContent = '✅ Saved!';
+        setTimeout(() => { btn.textContent = origText; }, 1500);
+    }
+
+    async function testTelegramAlert(e) {
+        const statusBox = document.getElementById('test-alert-status');
+        statusBox.classList.remove('hidden');
+        statusBox.innerHTML = '<span class="text-amber-400">Sending test notification to Telegram...</span>';
+
+        const token = document.getElementById('set-tg-token').value;
+        const chat = document.getElementById('set-tg-chat').value;
+
+        try {
+            const res = await fetch('/api/test-alert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ telegram_bot_token: token, telegram_chat_id: chat })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                statusBox.innerHTML = '<span class="text-emerald-400 font-medium">✓ Test message sent successfully! Check your Telegram.</span>';
+            } else {
+                statusBox.innerHTML = `<span class="text-rose-400 font-medium">✕ Error: ${data.message}</span>`;
+            }
+        } catch (err) {
+            statusBox.innerHTML = `<span class="text-rose-400 font-medium">✕ Request failed: ${err.message}</span>`;
+        }
+    }
+
+    async function hideListing(asin, event) {
+        if (event) event.stopPropagation();
+        if (!confirm('Hide this listing from your deals and blacklist it from future scrapes?')) return;
+        try {
+            const res = await fetch(`/api/hide/${asin}`, { method: 'POST' });
+            if (res.ok) {
+                const rows = document.querySelectorAll(`tr[data-asin="${asin}"]`);
+                rows.forEach(r => {
+                    r.style.transition = 'all 0.3s ease';
+                    r.style.opacity = '0';
+                    r.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        r.remove();
+                        applyFilters();
+                        const totalEl = document.getElementById('kpi-total');
+                        if (totalEl) {
+                            const cur = parseInt(totalEl.textContent) || 0;
+                            if (cur > 0) totalEl.textContent = (cur - 1);
+                        }
+                    }, 300);
+                });
+            }
+        } catch (e) {
+            console.error('Error hiding listing:', e);
+        }
+    }
+
+    function exportFilteredToCSV() {
+        const rows = Array.from(document.querySelectorAll('#dealsTbody tr.deal-row'))
+            .filter(r => r.style.display !== 'none');
+        
+        if (rows.length === 0) {
+            alert('No drives visible to export.');
+            return;
+        }
+
+        const headers = [
+            "Rank", "Store", "Model Number", "ASIN / SKU", "Title", "Capacity (TB)", "Category",
+            "Recording Tech", "Price (AED)", "AED / TB", "4-Bay RAID 5 Cost (AED)",
+            "4-Bay RAID 5 Usable (TB)", "Condition", "Product URL"
+        ];
+
+        const csvRows = [headers.join(',')];
+
+        rows.forEach((row, idx) => {
+            const asin = row.getAttribute('data-asin') || '';
+            const cap = row.getAttribute('data-capacity') || '';
+            const cat = row.getAttribute('data-category') || '';
+            const store = row.getAttribute('data-store') || 'Amazon.ae';
+            const model = row.getAttribute('data-model') || '';
+            const price = parseFloat(row.getAttribute('data-price') || '0').toFixed(2);
+            const aedTb = parseFloat(row.getAttribute('data-aed-tb') || '0').toFixed(2);
+            const renewed = row.getAttribute('data-renewed') === 'true' ? 'Renewed' : 'New';
+            
+            const titleEl = row.querySelector('.text-slate-100');
+            const title = titleEl ? titleEl.textContent.trim().replace(/"/g, '""') : '';
+            
+            let tech = 'Unknown';
+            if (row.textContent.includes('CMR ✅')) tech = 'CMR ✅';
+            else if (row.textContent.includes('SMR ⚠️')) tech = 'SMR ⚠️';
+
+            const raidCost = (parseFloat(price) * 4).toFixed(2);
+            const raidUsable = (parseInt(cap) * 3) || 0;
+            
+            // Get actual link from row actions
+            const linkEl = row.querySelector('a[href]');
+            const url = linkEl ? linkEl.getAttribute('href') : (store === 'Microless' ? `https://uae.microless.com` : (store === 'Al Ershad' ? `https://alershadonline.com` : `https://www.amazon.ae/dp/${asin}`));
+
+            csvRows.push([
+                idx + 1,
+                `"${store}"`,
+                `"${model.toUpperCase()}"`,
+                `"${asin}"`,
+                `"${title}"`,
+                cap,
+                `"${cat}"`,
+                `"${tech}"`,
+                price,
+                aedTb,
+                raidCost,
+                raidUsable,
+                renewed,
+                `"${url}"`
+            ].join(','));
+        });
+
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `uae_hdd_deals_view_${new Date().toISOString().slice(0,10)}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
+
+</body>
+</html>

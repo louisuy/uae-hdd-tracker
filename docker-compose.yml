@@ -1,0 +1,12 @@
+services:
+  hdd-tracker:
+    build: .
+    container_name: hdd-tracker
+    restart: unless-stopped
+    ports:
+      - "5055:5055"
+    environment:
+      - PORT=5055
+      - HDD_TRACKER_DB=/app/data/hdd_prices.db
+    volumes:
+      - ./data:/app/data
