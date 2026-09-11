@@ -58,7 +58,7 @@
                         <span class="text-amber-300 font-medium">Scraping in progress...</span>
                     {% elif last_scrape.status == 'success' %}
                         <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                        <span>{{ last_scrape.drives_found }} drives · Updated {{ last_scrape.finished_at[11:16] if last_scrape.finished_at else 'N/A' }} UTC</span>
+                        <span id="last-updated-badge" title="{{ last_scrape.finished_at }}">{{ last_scrape.drives_found }} drives · Checked {{ last_scrape.finished_at[5:10] }} {{ last_scrape.finished_at[11:16] }} UTC</span>
                     {% else %}
                         <span class="w-2 h-2 rounded-full bg-rose-400"></span>
                         <span class="text-rose-300">Scrape error</span>
@@ -404,6 +404,11 @@
                                         {% elif d.recording_tech == 'SMR ⚠️' %}
                                         <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30">
                                             SMR ⚠️ Avoid for RAID
+                                        </span>
+                                        {% endif %}
+                                        {% if d.scraped_at %}
+                                        <span class="text-slate-500 text-[10px] font-mono ml-auto" title="Price last checked: {{ d.scraped_at }}">
+                                            🕒 {{ d.scraped_at[5:10] }} {{ d.scraped_at[11:16] }}
                                         </span>
                                         {% endif %}
                                     </div>
@@ -825,6 +830,9 @@
                     ? `<span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-slate-800 text-sky-400 border border-sky-500/30" title="Manufacturer Model Number">MPN: ${d.model_number}</span>`
                     : '';
 
+                let timeStr = d.scraped_at ? (d.scraped_at.substring(5, 10) + ' ' + d.scraped_at.substring(11, 16)) : '';
+                let timeHtml = timeStr ? `<span class="text-slate-500 text-[10px] font-mono ml-auto" title="Price last checked: ${d.scraped_at}">🕒 ${timeStr}</span>` : '';
+
                 html += `
                 <tr class="deal-row hover:bg-slate-800/50 transition cursor-pointer"
                     data-asin="${d.asin}"
@@ -844,7 +852,7 @@
                         <div class="flex items-start gap-1.5">
                             <div>
                                 <span class="text-slate-100 font-medium hover:text-sky-300 transition">${d.title}</span>
-                                <div class="flex items-center flex-wrap gap-1.5 mt-0.5">${modelHtml} ${shuckHtml} ${recHtml}</div>
+                                <div class="flex items-center flex-wrap gap-1.5 mt-0.5">${modelHtml} ${shuckHtml} ${recHtml} ${timeHtml}</div>
                             </div>
                         </div>
                     </td>
