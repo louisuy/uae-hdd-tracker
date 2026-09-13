@@ -440,11 +440,11 @@
                         <td class="py-3 px-3 text-right font-mono">
                             <div class="text-amber-300 font-bold text-sm">AED {{ "%.2f"|format(d.price_aed) }}</div>
                             {% if d.price_diff < 0 %}
-                            <div class="text-[10px] text-emerald-400 font-semibold" title="Dropped since previous check">
+                            <div class="text-[10px] text-emerald-400 font-semibold" title="Was AED {{ '%.2f'|format(d.prev_price) if d.prev_price else '' }} before price drop">
                                 ↓ AED {{ "%.0f"|format(d.price_diff|abs) }} ({{ d.pct_diff }}%)
                             </div>
                             {% elif d.price_diff > 0 %}
-                            <div class="text-[10px] text-rose-400 font-semibold" title="Rose since previous check">
+                            <div class="text-[10px] text-rose-400 font-semibold" title="Was AED {{ '%.2f'|format(d.prev_price) if d.prev_price else '' }}">
                                 ↑ AED {{ "%.0f"|format(d.price_diff) }} (+{{ d.pct_diff }}%)
                             </div>
                             {% endif %}
@@ -806,9 +806,10 @@
                 else if (d.category === 'Surveillance') catBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">Surveillance</span>';
                 else catBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-700/60 text-slate-300">Internal</span>';
 
+                let wasTitle = d.prev_price ? `title="Was AED ${d.prev_price.toFixed(2)} before price drop"` : '';
                 let deltaHtml = '';
-                if (d.price_diff < 0) deltaHtml = `<div class="text-[10px] text-emerald-400 font-semibold">↓ AED ${Math.abs(d.price_diff).toFixed(0)} (${d.pct_diff}%)</div>`;
-                else if (d.price_diff > 0) deltaHtml = `<div class="text-[10px] text-rose-400 font-semibold">↑ AED ${d.price_diff.toFixed(0)} (+${d.pct_diff}%)</div>`;
+                if (d.price_diff < 0) deltaHtml = `<div class="text-[10px] text-emerald-400 font-semibold" ${wasTitle}>↓ AED ${Math.abs(d.price_diff).toFixed(0)} (${d.pct_diff}%)</div>`;
+                else if (d.price_diff > 0) deltaHtml = `<div class="text-[10px] text-rose-400 font-semibold" ${wasTitle}>↑ AED ${d.price_diff.toFixed(0)} (+${d.pct_diff}%)</div>`;
 
                 let aedTbColor = d.aed_per_tb <= 100 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
                                  d.aed_per_tb <= 120 ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' :

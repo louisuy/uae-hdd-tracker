@@ -190,7 +190,8 @@ def get_latest_deals(new_only: bool = False, min_tb: int = 1, limit: int = 500, 
                (SELECT MIN(price_aed) FROM price_snapshots WHERE asin = d.asin) AS min_price,
                (SELECT MAX(price_aed) FROM price_snapshots WHERE asin = d.asin) AS max_price,
                (SELECT COUNT(*) FROM price_snapshots WHERE asin = d.asin) AS history_count,
-               (SELECT price_aed FROM price_snapshots WHERE asin = d.asin ORDER BY scraped_at DESC LIMIT 1 OFFSET 1) AS prev_price
+               (SELECT price_aed FROM price_snapshots WHERE asin = d.asin ORDER BY scraped_at DESC LIMIT 1 OFFSET 1) AS prev_price,
+               (SELECT price_aed FROM price_snapshots WHERE asin = d.asin AND ABS(price_aed - ps.price_aed) >= 0.5 ORDER BY scraped_at DESC LIMIT 1) AS last_different_price
         FROM drives d
         JOIN price_snapshots ps ON d.asin = ps.asin
         WHERE ps.id = (
@@ -215,15 +216,31 @@ def get_latest_deals(new_only: bool = False, min_tb: int = 1, limit: int = 500, 
         d = dict(r)
         curr = d["price_aed"]
         prev = d["prev_price"]
+        last_diff = d["last_different_price"]
         min_p = d["min_price"]
         cap = d["capacity_tb"]
         
-        # Price movement
+        # Price movement:
+        # If immediate previous price differs, use it.
+        # If price hasn't changed from the immediate previous scrape, but it dropped from a higher
+        # price earlier (last_diff > curr), preserve the drop comparison so the user keeps seeing the discount!
+        diff = 0.0
+        base_price = prev
         if prev is not None and prev > 0:
-            diff = curr - prev
-            pct = (diff / prev) * 100
+            imm_diff = curr - prev
+            if abs(imm_diff) >= 0.5:
+                diff = imm_diff
+                base_price = prev
+            elif last_diff is not None and (curr - last_diff) <= -0.5:
+                # Keep the indication of the price drop comparison
+                diff = curr - last_diff
+                base_price = last_diff
+
+        if base_price and base_price > 0 and abs(diff) >= 0.5:
+            pct = (diff / base_price) * 100
             d["price_diff"] = round(diff, 2)
             d["pct_diff"] = round(pct, 1)
+            d["prev_price"] = base_price
         else:
             d["price_diff"] = 0.0
             d["pct_diff"] = 0.0
