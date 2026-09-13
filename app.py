@@ -140,8 +140,7 @@ scheduler = BackgroundScheduler()
 async def lifespan(app: FastAPI):
     db.init_db()
     interval = int(db.get_setting("scrape_interval_hours") or "6")
-    scheduler.add_job(run_scrape_job, "interval", hours=interval, id="scrape_job",
-                      next_run_time=None)  # Don't run immediately on startup
+    scheduler.add_job(run_scrape_job, "interval", hours=interval, id="scrape_job")
     scheduler.start()
     logger.info(f"Scheduler started — scraping every {interval}h")
     yield
