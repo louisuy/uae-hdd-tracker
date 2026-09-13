@@ -361,4 +361,11 @@ async def icon():
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 5055))
-    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(
+        "app:app",
+        host="0.0.0.0",
+        port=port,
+        reload=True,
+        reload_includes=["*.py", "*.html"],
+        reload_excludes=["*.db*", "*.sqlite*", "*.csv", "*.log", "__pycache__", ".git/*"]
+    )
