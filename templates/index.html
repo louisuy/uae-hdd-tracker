@@ -276,7 +276,8 @@
             <div class="flex items-center gap-2 w-full md:w-auto justify-end">
                 <span class="text-xs text-slate-400">Sort:</span>
                 <select id="sortSelect" onchange="applyFilters()" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500">
-                    <option value="aed_per_tb_asc">Best Value (AED/TB ↑)</option>
+                    <option value="aed_per_tb_asc">Best Current Value (AED/TB ↑)</option>
+                    <option value="min_aed_tb_asc">🏆 All-Time Record Value (Lowest Ever AED/TB)</option>
                     <option value="diff_desc">Biggest Price Hike (↑)</option>
                     <option value="diff_asc">Biggest Price Drop (↓)</option>
                     <option value="price_asc">Price: Low to High</option>
@@ -333,7 +334,7 @@
                         <th class="py-3 px-3 w-16 text-right">Size</th>
                         <th class="py-3 px-3 w-28 text-right">Price (AED)</th>
                         <th class="py-3 px-3 w-24 text-right">AED / TB</th>
-                        <th class="py-3 px-3 w-32 text-right">4-Bay RAID 5</th>
+                        <th class="py-3 px-3 w-28 text-right">All-Time Low</th>
                         <th class="py-3 px-3 w-20 text-center">Cond</th>
                         <th class="py-3 px-3 w-24 text-center">Actions</th>
                     </tr>
@@ -347,6 +348,8 @@
                         data-category="{{ d.category }}"
                         data-price="{{ d.price_aed }}"
                         data-aed-tb="{{ d.aed_per_tb }}"
+                        data-min-price="{{ d.min_price }}"
+                        data-min-aed-tb="{{ d.min_aed_per_tb }}"
                         data-renewed="{{ 'true' if d.is_renewed else 'false' }}"
                         data-store="{{ d.store }}"
                         data-model="{{ d.model_number|lower }}"
@@ -461,10 +464,16 @@
                             </span>
                         </td>
 
-                        <!-- 4-Bay RAID 5 Pack (Cost & Net Usable) -->
+                        <!-- All-Time Low -->
                         <td class="py-3 px-3 text-right font-mono">
-                            <div class="text-sky-300 font-bold text-xs">AED {{ "%.0f"|format(d.raid5_pack_cost) }}</div>
-                            <div class="text-[10px] text-slate-400">4x · {{ d.raid5_usable_tb }}TB Net</div>
+                            <div class="text-amber-300 font-bold text-xs">AED {{ "%.2f"|format(d.min_price) }}</div>
+                            <div class="text-[10px] {% if d.is_all_time_low %}text-emerald-400 font-semibold{% else %}text-slate-400{% endif %}">
+                                {% if d.is_all_time_low %}
+                                🔥 {{ "%.1f"|format(d.min_aed_per_tb) }}/TB
+                                {% else %}
+                                {{ "%.1f"|format(d.min_aed_per_tb) }} AED/TB
+                                {% endif %}
+                            </div>
                         </td>
 
                         <!-- Condition -->
@@ -683,8 +692,11 @@
             const bCap = parseInt(b.getAttribute('data-capacity'));
             const aDiff = parseFloat(a.getAttribute('data-price-diff') || '0');
             const bDiff = parseFloat(b.getAttribute('data-price-diff') || '0');
+            const aMinTb = parseFloat(a.getAttribute('data-min-aed-tb') || '9999');
+            const bMinTb = parseFloat(b.getAttribute('data-min-aed-tb') || '9999');
 
             if (sortVal === 'aed_per_tb_asc') return aAedTb - bAedTb;
+            if (sortVal === 'min_aed_tb_asc') return aMinTb - bMinTb;
             if (sortVal === 'diff_desc') return bDiff - aDiff;
             if (sortVal === 'diff_asc') return aDiff - bDiff;
             if (sortVal === 'price_asc') return aPrice - bPrice;
@@ -842,6 +854,8 @@
                     data-category="${d.category}"
                     data-price="${d.price_aed}"
                     data-aed-tb="${d.aed_per_tb}"
+                    data-min-price="${(d.min_price || d.price_aed).toFixed(2)}"
+                    data-min-aed-tb="${(d.min_aed_per_tb || d.aed_per_tb).toFixed(2)}"
                     data-renewed="${d.is_renewed ? 'true' : 'false'}"
                     data-store="${d.store || 'Amazon.ae'}"
                     data-model="${(d.model_number || '').toLowerCase()}"
@@ -869,8 +883,10 @@
                         </span>
                     </td>
                     <td class="py-3 px-3 text-right font-mono">
-                        <div class="text-sky-300 font-bold text-xs">AED ${(d.raid5_pack_cost || 0).toFixed(0)}</div>
-                        <div class="text-[10px] text-slate-400">4x · ${d.raid5_usable_tb || 0}TB Net</div>
+                        <div class="text-amber-300 font-bold text-xs">AED ${(d.min_price || d.price_aed).toFixed(2)}</div>
+                        <div class="text-[10px]">
+                            ${d.is_all_time_low ? `<span class="text-emerald-400 font-semibold">🔥 ${(d.min_aed_per_tb || d.aed_per_tb).toFixed(1)}/TB</span>` : `<span class="text-slate-400">${(d.min_aed_per_tb || d.aed_per_tb).toFixed(1)} AED/TB</span>`}
+                        </div>
                     </td>
                     <td class="py-3 px-3 text-center font-medium">${condHtml}</td>
                     <td class="py-3 px-3 text-center" onclick="event.stopPropagation()">
@@ -1064,8 +1080,8 @@
 
         const headers = [
             "Rank", "Store", "Model Number", "ASIN / SKU", "Title", "Capacity (TB)", "Category",
-            "Recording Tech", "Price (AED)", "AED / TB", "4-Bay RAID 5 Cost (AED)",
-            "4-Bay RAID 5 Usable (TB)", "Condition", "Product URL"
+            "Recording Tech", "Price (AED)", "AED / TB", "All-Time Low Price (AED)",
+            "All-Time Low AED/TB", "Condition", "Product URL"
         ];
 
         const csvRows = [headers.join(',')];
@@ -1078,6 +1094,8 @@
             const model = row.getAttribute('data-model') || '';
             const price = parseFloat(row.getAttribute('data-price') || '0').toFixed(2);
             const aedTb = parseFloat(row.getAttribute('data-aed-tb') || '0').toFixed(2);
+            const atlPrice = parseFloat(row.getAttribute('data-min-price') || price).toFixed(2);
+            const atlAedTb = parseFloat(row.getAttribute('data-min-aed-tb') || aedTb).toFixed(2);
             const renewed = row.getAttribute('data-renewed') === 'true' ? 'Renewed' : 'New';
             
             const titleEl = row.querySelector('.text-slate-100');
@@ -1087,9 +1105,6 @@
             if (row.textContent.includes('CMR ✅')) tech = 'CMR ✅';
             else if (row.textContent.includes('SMR ⚠️')) tech = 'SMR ⚠️';
 
-            const raidCost = (parseFloat(price) * 4).toFixed(2);
-            const raidUsable = (parseInt(cap) * 3) || 0;
-            
             // Get actual link from row actions
             const linkEl = row.querySelector('a[href]');
             const url = linkEl ? linkEl.getAttribute('href') : (store === 'Microless' ? `https://uae.microless.com` : (store === 'Al Ershad' ? `https://alershadonline.com` : `https://www.amazon.ae/dp/${asin}`));
@@ -1105,8 +1120,8 @@
                 `"${tech}"`,
                 price,
                 aedTb,
-                raidCost,
-                raidUsable,
+                atlPrice,
+                atlAedTb,
                 renewed,
                 `"${url}"`
             ].join(','));

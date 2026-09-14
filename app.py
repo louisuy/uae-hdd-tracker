@@ -196,11 +196,11 @@ async def api_export_csv(new_only: bool = False, min_tb: int = 1, store: str | N
         "Recording Tech",
         "Price (AED)",
         "AED / TB",
-        "4-Bay RAID 5 Cost (AED)",
-        "4-Bay RAID 5 Usable (TB)",
+        "All-Time Low Price (AED)",
+        "All-Time Low AED/TB",
         "Condition",
         "Shuckable",
-        "All-Time Low",
+        "Is Record Low",
         "Product URL"
     ])
     
@@ -216,8 +216,8 @@ async def api_export_csv(new_only: bool = False, min_tb: int = 1, store: str | N
             d.get("recording_tech", ""),
             f"{d.get('price_aed', 0):.2f}",
             f"{d.get('aed_per_tb', 0):.2f}",
-            f"{d.get('raid5_pack_cost', 0):.2f}",
-            f"{d.get('raid5_usable_tb', 0)}",
+            f"{d.get('min_price', d.get('price_aed', 0)):.2f}",
+            f"{d.get('min_aed_per_tb', d.get('aed_per_tb', 0)):.2f}",
             "Renewed" if d.get("is_renewed") else "New",
             "Yes" if d.get("is_shuckable") else "No",
             "Yes" if d.get("is_all_time_low") else "No",

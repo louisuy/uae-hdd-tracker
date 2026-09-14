@@ -245,8 +245,11 @@ def get_latest_deals(new_only: bool = False, min_tb: int = 1, limit: int = 500, 
             d["price_diff"] = 0.0
             d["pct_diff"] = 0.0
             
-        # All-Time Low check
-        d["is_all_time_low"] = (min_p is not None and curr <= (min_p + 0.01))
+        # All-Time Low metrics
+        min_p = d["min_price"] if d["min_price"] is not None else curr
+        d["min_price"] = round(min_p, 2)
+        d["min_aed_per_tb"] = round(min_p / cap, 2) if cap and cap > 0 else d["aed_per_tb"]
+        d["is_all_time_low"] = (curr <= (min_p + 0.05))
         
         # Shuckable check for externals
         t_low = d["title"].lower()
