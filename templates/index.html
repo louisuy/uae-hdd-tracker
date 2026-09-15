@@ -5,21 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0ea5e9">
     <link rel="manifest" href="/manifest.json">
-    <title>HDD Price Tracker — Amazon.ae</title>
+    <title>UAE Hardware Deals Hub — Storage & Memory Price Tracker</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js CDN for price fluctuation graphs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         tailwind.config = {
-            darkMode: 'class',
+            darkMode: "class",
             theme: {
                 extend: {
                     colors: {
-                        brand: '#0ea5e9',
-                        darkBg: '#0b0f19',
-                        cardBg: '#111827',
-                        borderBg: '#1f2937'
+                        brand: "#0ea5e9",
+                        darkBg: "#0b0f19",
+                        cardBg: "#111827",
+                        borderBg: "#1f2937"
                     }
                 }
             }
@@ -32,24 +32,45 @@
         ::-webkit-scrollbar-track { background: #0b0f19; }
         ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        .tab-btn.active {
+            background: linear-gradient(135deg, rgba(14,165,233,0.25) 0%, rgba(59,130,246,0.15) 100%);
+            border-color: rgba(14,165,233,0.5);
+            color: #ffffff;
+            box-shadow: 0 0 15px rgba(14,165,233,0.2);
+        }
     </style>
 </head>
 <body class="bg-[#0b0f19] text-slate-100 min-h-screen font-sans antialiased">
 
 <!-- Header -->
-<header class="border-b border-slate-800/80 bg-[#0f172a]/90 backdrop-blur sticky top-0 z-40">
-    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+<header class="border-b border-slate-800/80 bg-[#0f172a]/95 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div class="flex items-center gap-3">
-            <span class="text-2xl p-1.5 bg-sky-500/10 border border-sky-500/20 rounded-xl">💾</span>
+            <span class="text-2xl p-1.5 bg-sky-500/10 border border-sky-500/20 rounded-xl">⚡</span>
             <div>
                 <div class="flex items-center gap-2">
-                    <h1 class="text-base font-bold text-white tracking-tight">HDD Price Tracker</h1>
-                    <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">Amazon.ae</span>
+                    <h1 class="text-base font-bold text-white tracking-tight">UAE Hardware Tracker</h1>
+                    <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">Amazon · Microless · Ershad</span>
                 </div>
-                <p class="text-xs text-slate-400">Live AED/TB monitor for 10TB+ hard drives</p>
+                <p class="text-xs text-slate-400">Live price & fluctuation monitor for Storage (HDDs) and Memory (RAM)</p>
             </div>
         </div>
-        <div class="flex items-center gap-3">
+
+        <!-- Component Switcher Tabs in Header -->
+        <div class="flex items-center gap-2 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+            <button onclick="switchTab('hdd')" id="tab-btn-hdd"
+                    class="tab-btn active px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 border border-transparent text-slate-400 hover:text-white">
+                <span>💽 Hard Drives</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-sky-300 font-mono">{{ deals|length }}</span>
+            </button>
+            <button onclick="switchTab('ram')" id="tab-btn-ram"
+                    class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 border border-transparent text-slate-400 hover:text-white">
+                <span>⚡ RAM Memory</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-purple-300 font-mono" id="header-ram-count">{{ ram_deals|length }}</span>
+            </button>
+        </div>
+
+        <div class="flex items-center gap-2">
             <!-- Scrape status indicator -->
             <div id="status-badge" class="hidden sm:flex items-center gap-2 text-xs text-slate-400 bg-slate-800/70 border border-slate-700/50 rounded-full px-3 py-1">
                 {% if last_scrape %}
@@ -65,25 +86,27 @@
                     {% endif %}
                 {% else %}
                     <span class="w-2 h-2 rounded-full bg-slate-500"></span>
-                    <span>No data yet</span>
+                    <span>Ready</span>
                 {% endif %}
             </div>
 
-            <button onclick="triggerScrape()" id="scrape-btn"
-                    class="bg-brand hover:bg-sky-500 active:scale-95 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-lg shadow-sky-500/20 transition flex items-center gap-1.5">
+            <!-- Scrape Buttons -->
+            <button onclick="triggerScrapeCurrentTab()" id="scrape-btn"
+                    class="bg-brand hover:bg-sky-500 active:scale-95 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg shadow-lg shadow-sky-500/20 transition flex items-center gap-1.5">
                 <span>🔄</span>
-                <span>Scrape Now</span>
+                <span id="scrape-btn-text">Scrape HDDs</span>
             </button>
 
-            <a href="/api/export/csv" download="amazon_ae_hdd_deals.csv" id="export-csv-btn"
-               class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 hover:text-white text-xs font-semibold px-3 py-2 rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-sm"
-               title="Export all tracked deals to CSV">
+            <!-- Export CSV -->
+            <button onclick="exportCurrentTabCSV()" id="export-csv-btn"
+                    class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 hover:text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5 shadow-sm"
+                    title="Export tracked deals to CSV">
                 <span>📥</span>
                 <span class="hidden sm:inline">Export CSV</span>
-            </a>
+            </button>
 
             <button onclick="toggleSettings()"
-                    class="text-slate-400 hover:text-white transition p-2 rounded-lg hover:bg-slate-800 border border-transparent hover:border-slate-700">
+                    class="text-slate-400 hover:text-white transition p-1.5 rounded-lg hover:bg-slate-800 border border-transparent hover:border-slate-700" title="Settings">
                 ⚙️
             </button>
         </div>
@@ -103,7 +126,7 @@
                 <span id="progress-query" class="text-slate-200 font-mono font-medium truncate max-w-xs sm:max-w-md">Initializing...</span>
             </div>
             <div class="flex items-center gap-3 font-mono">
-                <span id="progress-count" class="text-emerald-400 font-semibold text-xs">0 drives cataloged</span>
+                <span id="progress-count" class="text-emerald-400 font-semibold text-xs">0 cataloged</span>
                 <span id="progress-pct" class="font-black text-sky-400 text-sm">0%</span>
             </div>
         </div>
@@ -112,8 +135,8 @@
             <div id="progress-bar-fill" class="bg-gradient-to-r from-sky-500 via-teal-400 to-emerald-400 h-full rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
         </div>
         <div class="flex items-center justify-between text-[11px] text-slate-400">
-            <span id="progress-step-text">Searching Amazon.ae...</span>
-            <span class="text-slate-400">Page auto-refreshes on completion</span>
+            <span id="progress-step-text">Searching retailers...</span>
+            <span class="text-slate-400">Table updates live as deals are ingested</span>
         </div>
     </div>
 </div>
@@ -136,14 +159,14 @@
                 <span class="text-[11px] text-slate-500">Default: Every 6 hours</span>
             </div>
             <div>
-                <label class="block text-xs text-slate-400 mb-1">Price Alert Target (AED / TB)</label>
+                <label class="block text-xs text-slate-400 mb-1">HDD Alert Target (AED / TB)</label>
                 <input type="number" id="set-threshold" value="{{ settings.get('alert_aed_per_tb_threshold', '100') }}"
                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
-                <span class="text-[11px] text-slate-500">Sends alert when any drive drops below this value</span>
+                <span class="text-[11px] text-slate-500">Sends alert when any HDD drops below this value</span>
             </div>
             <div>
                 <label class="block text-xs text-slate-400 mb-1">Min Drive Capacity (TB)</label>
-                <input type="number" id="set-min-tb" value="{{ settings.get('min_capacity_tb', '10') }}" min="8" max="30"
+                <input type="number" id="set-min-tb" value="{{ settings.get('min_capacity_tb', '1') }}" min="1" max="30"
                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
                 <span class="text-[11px] text-slate-500">Filters out smaller drives</span>
             </div>
@@ -186,325 +209,524 @@
 
 <div class="max-w-7xl mx-auto px-4 py-5 space-y-5">
 
-    <!-- KPI Summary Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <!-- Best Deal Card -->
-        <div class="bg-gradient-to-br from-emerald-950/40 to-slate-900 border border-emerald-500/20 rounded-xl p-4 flex flex-col justify-between">
-            <span class="text-xs text-emerald-400 font-semibold uppercase tracking-wider">🏆 Best Value Right Now</span>
-            <div class="mt-2">
-                <div class="flex items-baseline gap-1">
-                    <span id="kpi-best-val" class="text-2xl font-black text-emerald-300 font-mono">{{ "%.1f"|format(stats.best_deal.aed_per_tb) if stats.best_deal else '--' }}</span>
-                    <span class="text-xs text-emerald-400/80 font-mono">AED/TB</span>
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!-- TAB 1: HARD DRIVES (HDD)                              -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    <div id="section-hdd" class="space-y-5">
+        <!-- HDD KPI Summary Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="bg-gradient-to-br from-emerald-950/40 to-slate-900 border border-emerald-500/20 rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs text-emerald-400 font-semibold uppercase tracking-wider">🏆 Best HDD Value</span>
+                <div class="mt-2">
+                    <div class="flex items-baseline gap-1">
+                        <span id="kpi-best-val" class="text-2xl font-black text-emerald-300 font-mono">{{ "%.1f"|format(stats.best_deal.aed_per_tb) if stats.best_deal else "--" }}</span>
+                        <span class="text-xs text-emerald-400/80 font-mono">AED/TB</span>
+                    </div>
+                    <p id="kpi-best-title" class="text-xs text-slate-300 mt-1 truncate" title="{{ stats.best_deal.title if stats.best_deal else '' }}">
+                        {{ stats.best_deal.capacity if stats.best_deal else '' }}TB · {{ stats.best_deal.title if stats.best_deal else "N/A" }}
+                    </p>
                 </div>
-                <p id="kpi-best-title" class="text-xs text-slate-300 mt-1 truncate" title="{{ stats.best_deal.title if stats.best_deal else '' }}">
-                    {{ stats.best_deal.capacity if stats.best_deal else '' }}TB · {{ stats.best_deal.title if stats.best_deal else 'N/A' }}
-                </p>
+            </div>
+
+            <div class="bg-gradient-to-br from-amber-950/30 to-slate-900 border border-amber-500/20 rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs text-amber-400 font-semibold uppercase tracking-wider">🔥 All-Time Record Lows</span>
+                <div class="mt-2">
+                    <div class="flex items-baseline gap-1">
+                        <span id="kpi-atls" class="text-2xl font-black text-amber-300 font-mono">{{ stats.all_time_lows }}</span>
+                        <span class="text-xs text-slate-400">drives at lowest price</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Historically cheapest in your DB</p>
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-br from-sky-950/30 to-slate-900 border border-sky-500/20 rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs text-sky-400 font-semibold uppercase tracking-wider">⚡ Sweet Spot Deals</span>
+                <div class="mt-2">
+                    <div class="flex items-baseline gap-1">
+                        <span id="kpi-under-100" class="text-2xl font-black text-sky-300 font-mono">{{ stats.drives_under_100 }}</span>
+                        <span class="text-xs text-slate-400">under 100 AED/TB</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Prime candidates for your NAS</p>
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-br from-purple-950/30 to-slate-900 border border-purple-500/20 rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs text-purple-400 font-semibold uppercase tracking-wider">📦 Total HDDs Tracked</span>
+                <div class="mt-2">
+                    <div class="flex items-baseline gap-1">
+                        <span id="kpi-total" class="text-2xl font-black text-purple-300 font-mono">{{ stats.total_drives }}</span>
+                        <span class="text-xs text-slate-400">unique listings</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Amazon.ae, Microless & Al Ershad</p>
+                </div>
             </div>
         </div>
 
-        <!-- All-Time Lows Card -->
-        <div class="bg-gradient-to-br from-amber-950/30 to-slate-900 border border-amber-500/20 rounded-xl p-4 flex flex-col justify-between">
-            <span class="text-xs text-amber-400 font-semibold uppercase tracking-wider">🔥 All-Time Lows</span>
-            <div class="mt-2">
-                <div class="flex items-baseline gap-1">
-                    <span id="kpi-atls" class="text-2xl font-black text-amber-300 font-mono">{{ stats.all_time_lows }}</span>
-                    <span class="text-xs text-slate-400">drives at lowest price</span>
+        <!-- HDD Filters & Instant Search Bar -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div class="flex flex-col md:flex-row gap-3 items-center justify-between">
+                <div class="relative w-full md:w-96">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">🔎</span>
+                    <input type="text" id="searchInput" oninput="applyFilters()"
+                           placeholder="Filter HDDs by title, model (Exos, IronWolf, Red Plus)..."
+                           class="w-full bg-slate-800/80 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 transition">
                 </div>
-                <p class="text-xs text-slate-400 mt-1">Historically cheapest in your DB</p>
+
+                <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
+                    <button onclick="setConditionFilter('all')" id="cond-all" class="filter-cond-btn px-3 py-1 rounded text-xs font-medium transition bg-sky-500 text-white">All Cond</button>
+                    <button onclick="setConditionFilter('new')" id="cond-new" class="filter-cond-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">New Only</button>
+                    <button onclick="setConditionFilter('renewed')" id="cond-renewed" class="filter-cond-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Renewed</button>
+                </div>
+
+                <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
+                    <button onclick="setStoreFilter('all')" id="store-all" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition bg-sky-500 text-white">All Stores</button>
+                    <button onclick="setStoreFilter('Amazon.ae')" id="store-amazon" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Amazon</button>
+                    <button onclick="setStoreFilter('Microless')" id="store-microless" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Microless</button>
+                    <button onclick="setStoreFilter('Al Ershad')" id="store-ershad" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Ershad</button>
+                </div>
+
+                <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
+                    <button onclick="setTrendFilter('all')" id="trend-all" class="filter-trend-btn px-3 py-1 rounded text-xs font-medium transition bg-sky-500 text-white">All Moves</button>
+                    <button onclick="setTrendFilter('dropped')" id="trend-dropped" class="filter-trend-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">🟢 Drops</button>
+                    <button onclick="setTrendFilter('increased')" id="trend-increased" class="filter-trend-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">🔴 Increases</button>
+                </div>
+
+                <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+                    <span class="text-xs text-slate-400">Sort:</span>
+                    <select id="sortSelect" onchange="applyFilters()" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500">
+                        <option value="aed_per_tb_asc">Best Value (AED/TB ↑)</option>
+                        <option value="min_aed_tb_asc">🏆 All-Time Record Value (Lowest AED/TB)</option>
+                        <option value="diff_desc">Biggest Price Hike (↑)</option>
+                        <option value="diff_asc">Biggest Price Drop (↓)</option>
+                        <option value="price_asc">Price: Low to High</option>
+                        <option value="price_desc">Price: High to Low</option>
+                        <option value="capacity_desc">Capacity: High to Low</option>
+                    </select>
+                    <button onclick="exportFilteredToCSV()"
+                            class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs font-medium transition flex items-center gap-1 shadow-sm"
+                            title="Export current filtered view to CSV">
+                        <span>📄</span>
+                        <span>Export View</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Capacity & Category Filter Pills -->
+            <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/70 text-xs">
+                <span class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mr-1">Capacity:</span>
+                <button onclick="setCapacityFilter('all')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30" data-cap="all">All</button>
+                <button onclick="setCapacityFilter('1')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="1">1TB</button>
+                <button onclick="setCapacityFilter('2')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="2">2TB</button>
+                <button onclick="setCapacityFilter('4')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="4">4TB</button>
+                <button onclick="setCapacityFilter('8')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="8">8TB</button>
+                <button onclick="setCapacityFilter('12')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="12">12TB</button>
+                <button onclick="setCapacityFilter('16')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="16">16TB</button>
+                <button onclick="setCapacityFilter('18')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="18">18TB</button>
+                <button onclick="setCapacityFilter('20+')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="20+">20TB+</button>
+
+                <span class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider ml-4 mr-1">Type:</span>
+                <button onclick="setCategoryFilter('all')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30" data-cat="all">All</button>
+                <button onclick="setCategoryFilter('Enterprise')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="Enterprise">Enterprise</button>
+                <button onclick="setCategoryFilter('NAS')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="NAS">NAS</button>
+                <button onclick="setCategoryFilter('External')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="External">External (Shuckable)</button>
+                <button onclick="setCategoryFilter('Surveillance')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="Surveillance">Surveillance</button>
+
+                <span id="filtered-count" class="ml-auto text-slate-500 text-xs font-mono">Showing {{ deals|length }} drives</span>
             </div>
         </div>
 
-        <!-- Under 100 AED/TB Card -->
-        <div class="bg-gradient-to-br from-sky-950/30 to-slate-900 border border-sky-500/20 rounded-xl p-4 flex flex-col justify-between">
-            <span class="text-xs text-sky-400 font-semibold uppercase tracking-wider">⚡ Sweet Spot Deals</span>
-            <div class="mt-2">
-                <div class="flex items-baseline gap-1">
-                    <span id="kpi-under-100" class="text-2xl font-black text-sky-300 font-mono">{{ stats.drives_under_100 }}</span>
-                    <span class="text-xs text-slate-400">under 100 AED/TB</span>
-                </div>
-                <p class="text-xs text-slate-400 mt-1">Prime candidates for your NAS</p>
-            </div>
-        </div>
-
-        <!-- Total Tracked Card -->
-        <div class="bg-gradient-to-br from-purple-950/30 to-slate-900 border border-purple-500/20 rounded-xl p-4 flex flex-col justify-between">
-            <span class="text-xs text-purple-400 font-semibold uppercase tracking-wider">📦 Total Monitored</span>
-            <div class="mt-2">
-                <div class="flex items-baseline gap-1">
-                    <span id="kpi-total" class="text-2xl font-black text-purple-300 font-mono">{{ stats.total_drives }}</span>
-                    <span class="text-xs text-slate-400">unique listings</span>
-                </div>
-                <p class="text-xs text-slate-400 mt-1">1TB to 28TB on Amazon.ae</p>
+        <!-- HDD Deals Table -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs" id="dealsTable">
+                    <thead class="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold text-[11px] tracking-wider">
+                        <tr>
+                            <th class="py-3 px-3 text-center w-12">#</th>
+                            <th class="py-3 px-3 w-28">Store</th>
+                            <th class="py-3 px-3">Drive Description</th>
+                            <th class="py-3 px-3 w-24">Category</th>
+                            <th class="py-3 px-3 w-16 text-right">Size</th>
+                            <th class="py-3 px-3 w-28 text-right">Price (AED)</th>
+                            <th class="py-3 px-3 w-24 text-right">AED / TB</th>
+                            <th class="py-3 px-3 w-28 text-right">All-Time Low</th>
+                            <th class="py-3 px-3 w-20 text-center">Cond</th>
+                            <th class="py-3 px-3 w-24 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60" id="dealsTbody">
+                        {% for d in deals %}
+                        <tr class="deal-row hover:bg-slate-800/50 transition cursor-pointer"
+                            data-asin="{{ d.asin }}"
+                            data-title="{{ d.title|lower }}"
+                            data-capacity="{{ d.capacity_tb }}"
+                            data-category="{{ d.category }}"
+                            data-price="{{ d.price_aed }}"
+                            data-aed-tb="{{ d.aed_per_tb }}"
+                            data-min-price="{{ "%.2f"|format(d.min_price or d.price_aed) }}"
+                            data-min-aed-tb="{{ "%.2f"|format(d.min_aed_per_tb or d.aed_per_tb) }}"
+                            data-renewed="{{ "true" if d.is_renewed else "false" }}"
+                            data-store="{{ d.store or "Amazon.ae" }}"
+                            data-model="{{ (d.model_number or "")|lower }}"
+                            data-price-diff="{{ d.price_diff or 0 }}"
+                            onclick="showPriceHistory('{{ d.asin }}')">
+                            <td class="py-3 px-3 text-center font-mono text-slate-500">
+                                {% if d.is_all_time_low %}
+                                    <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30" title="At lowest price ever recorded!">🔥 {{ loop.index }}</span>
+                                {% else %}
+                                    {{ loop.index }}
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3 font-medium">
+                                {% if d.store == 'Microless' %}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">🔴 Microless</span>
+                                {% elif d.store == 'Al Ershad' %}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">🟣 Al Ershad</span>
+                                {% else %}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">📦 Amazon.ae</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3">
+                                <div class="flex items-start gap-1.5">
+                                    <div>
+                                        <span class="text-slate-100 font-medium hover:text-sky-300 transition">{{ d.title }}</span>
+                                        <div class="flex items-center flex-wrap gap-1.5 mt-0.5">
+                                            {% if d.model_number %}
+                                                <span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-slate-800 text-sky-400 border border-sky-500/30">MPN: {{ d.model_number }}</span>
+                                            {% endif %}
+                                            {% if d.is_shuckable %}
+                                                <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">⚡ Shuckable</span>
+                                            {% endif %}
+                                            {% if d.recording_tech == 'CMR ✅' %}
+                                                <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">CMR ✅ RAID Safe</span>
+                                            {% elif d.recording_tech == 'SMR ⚠️' %}
+                                                <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30">SMR ⚠️ Avoid for RAID</span>
+                                            {% endif %}
+                                            {% if d.scraped_at %}
+                                                <span class="text-slate-500 text-[10px] font-mono ml-auto" title="Price last checked">🕒 {{ d.scraped_at[5:10] }} {{ d.scraped_at[11:16] }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="py-3 px-3">
+                                {% if d.category == 'Enterprise' %}
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30">Enterprise</span>
+                                {% elif d.category == 'NAS' %}
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">NAS</span>
+                                {% elif d.category == 'External' %}
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">External</span>
+                                {% elif d.category == 'Surveillance' %}
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">Surveillance</span>
+                                {% else %}
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-700/60 text-slate-300">Internal</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3 text-right font-mono font-bold text-slate-200">{{ d.capacity_tb }}TB</td>
+                            <td class="py-3 px-3 text-right font-mono">
+                                <div class="text-amber-300 font-bold text-sm">AED {{ "%.2f"|format(d.price_aed) }}</div>
+                                {% if d.price_diff < 0 %}
+                                    <div class="text-[10px] text-emerald-400 font-semibold" title="Was AED {{ "%.2f"|format(d.prev_price) }} before price drop">↓ AED {{ "%.0f"|format(d.price_diff|abs) }} ({{ d.pct_diff }}%)</div>
+                                {% elif d.price_diff > 0 %}
+                                    <div class="text-[10px] text-rose-400 font-semibold" title="Was AED {{ "%.2f"|format(d.prev_price) }} before price hike">↑ AED {{ "%.0f"|format(d.price_diff) }} (+{{ d.pct_diff }}%)</div>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3 text-right font-mono">
+                                <span class="px-2 py-1 rounded text-xs font-black
+                                    {% if d.aed_per_tb <= 100 %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/40
+                                    {% elif d.aed_per_tb <= 120 %}bg-sky-500/20 text-sky-300 border border-sky-500/30
+                                    {% elif d.aed_per_tb <= 150 %}bg-yellow-500/20 text-yellow-300 border border-yellow-500/30
+                                    {% else %}bg-rose-500/20 text-rose-300 border border-rose-500/30{% endif %}">
+                                    {{ "%.2f"|format(d.aed_per_tb) }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-3 text-right font-mono">
+                                <div class="text-amber-300 font-bold text-xs">AED {{ "%.2f"|format(d.min_price or d.price_aed) }}</div>
+                                <div class="text-[10px]">
+                                    {% if d.is_all_time_low %}
+                                        <span class="text-emerald-400 font-semibold">🔥 {{ "%.1f"|format(d.min_aed_per_tb or d.aed_per_tb) }}/TB</span>
+                                    {% else %}
+                                        <span class="text-slate-400">{{ "%.1f"|format(d.min_aed_per_tb or d.aed_per_tb) }} AED/TB</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="py-3 px-3 text-center font-medium">
+                                {% if d.is_renewed %}
+                                    <span class="text-amber-400/90 text-[11px] bg-amber-500/10 px-1.5 py-0.5 rounded">Renewed</span>
+                                {% else %}
+                                    <span class="text-emerald-400 text-[11px] bg-emerald-500/10 px-1.5 py-0.5 rounded">New</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3 text-center" onclick="event.stopPropagation()">
+                                <div class="flex items-center justify-center gap-1.5">
+                                    <button onclick="showPriceHistory('{{ d.asin }}')" class="p-1.5 hover:bg-slate-800 rounded text-slate-300 hover:text-sky-400 transition" title="Price History Chart">📈</button>
+                                    <a href="{{ d.url }}" target="_blank" rel="noopener" class="p-1.5 hover:bg-slate-800 rounded text-sky-400 hover:text-sky-300 transition" title="Open Product Page">🔗</a>
+                                    <button onclick="hideListing('{{ d.asin }}', event)" class="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-rose-400 transition" title="Hide this listing">🚫</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
-    <!-- Filters & Instant Search Bar -->
-    <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
-        <div class="flex flex-col md:flex-row gap-3 items-center justify-between">
-            <!-- Search input -->
-            <div class="relative w-full md:w-96">
-                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">🔎</span>
-                <input type="text" id="searchInput" oninput="applyFilters()"
-                       placeholder="Filter by title, brand, model (e.g. Exos, Toshiba, Elements)..."
-                       class="w-full bg-slate-800/80 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 transition">
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!-- TAB 2: MEMORY (RAM) TRACKER                           -->
+    <!-- ══════════════════════════════════════════════════════ -->
+    <div id="section-ram" class="hidden space-y-5">
+        <!-- RAM KPI Summary Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="bg-gradient-to-br from-purple-950/40 to-slate-900 border border-purple-500/30 rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs text-purple-400 font-semibold uppercase tracking-wider">🟣 Best Value DDR5</span>
+                <div class="mt-2">
+                    <div class="flex items-baseline gap-1">
+                        <span id="ram-kpi-ddr5-val" class="text-2xl font-black text-purple-300 font-mono">{{ "%.2f"|format(ram_stats.best_ddr5.aed_per_gb) if ram_stats.best_ddr5 else "--" }}</span>
+                        <span class="text-xs text-purple-400/80 font-mono">AED/GB</span>
+                    </div>
+                    <p id="ram-kpi-ddr5-title" class="text-xs text-slate-300 mt-1 truncate" title="{{ ram_stats.best_ddr5.title if ram_stats.best_ddr5 else '' }}">
+                        {{ ram_stats.best_ddr5.capacity_gb if ram_stats.best_ddr5 else '' }}GB ({{ ram_stats.best_ddr5.kit_config if ram_stats.best_ddr5 else '' }}) · {{ ram_stats.best_ddr5.title if ram_stats.best_ddr5 else "N/A" }}
+                    </p>
+                </div>
             </div>
 
-            <!-- Condition Filter -->
-            <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
-                <button onclick="setConditionFilter('all')" id="cond-all" class="filter-cond-btn px-3 py-1 rounded text-xs font-medium transition bg-sky-500 text-white">All Cond</button>
-                <button onclick="setConditionFilter('new')" id="cond-new" class="filter-cond-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">New Only</button>
-                <button onclick="setConditionFilter('renewed')" id="cond-renewed" class="filter-cond-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Renewed</button>
+            <div class="bg-gradient-to-br from-blue-950/40 to-slate-900 border border-blue-500/30 rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs text-blue-400 font-semibold uppercase tracking-wider">🔵 Best Value DDR4</span>
+                <div class="mt-2">
+                    <div class="flex items-baseline gap-1">
+                        <span id="ram-kpi-ddr4-val" class="text-2xl font-black text-blue-300 font-mono">{{ "%.2f"|format(ram_stats.best_ddr4.aed_per_gb) if ram_stats.best_ddr4 else "--" }}</span>
+                        <span class="text-xs text-blue-400/80 font-mono">AED/GB</span>
+                    </div>
+                    <p id="ram-kpi-ddr4-title" class="text-xs text-slate-300 mt-1 truncate" title="{{ ram_stats.best_ddr4.title if ram_stats.best_ddr4 else '' }}">
+                        {{ ram_stats.best_ddr4.capacity_gb if ram_stats.best_ddr4 else '' }}GB ({{ ram_stats.best_ddr4.kit_config if ram_stats.best_ddr4 else '' }}) · {{ ram_stats.best_ddr4.title if ram_stats.best_ddr4 else "N/A" }}
+                    </p>
+                </div>
             </div>
 
-            <!-- Store Filter -->
-            <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
-                <button onclick="setStoreFilter('all')" id="store-all" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition bg-sky-500 text-white">All Stores</button>
-                <button onclick="setStoreFilter('Amazon.ae')" id="store-amazon" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Amazon.ae</button>
-                <button onclick="setStoreFilter('Microless')" id="store-microless" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Microless</button>
-                <button onclick="setStoreFilter('Al Ershad')" id="store-ershad" class="filter-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Al Ershad</button>
+            <div class="bg-gradient-to-br from-emerald-950/40 to-slate-900 border border-emerald-500/30 rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs text-emerald-400 font-semibold uppercase tracking-wider">💻 Best Laptop / NAS SODIMM</span>
+                <div class="mt-2">
+                    <div class="flex items-baseline gap-1">
+                        <span id="ram-kpi-sodimm-val" class="text-2xl font-black text-emerald-300 font-mono">{{ "%.2f"|format(ram_stats.best_sodimm.aed_per_gb) if ram_stats.best_sodimm else "--" }}</span>
+                        <span class="text-xs text-emerald-400/80 font-mono">AED/GB</span>
+                    </div>
+                    <p id="ram-kpi-sodimm-title" class="text-xs text-slate-300 mt-1 truncate" title="{{ ram_stats.best_sodimm.title if ram_stats.best_sodimm else '' }}">
+                        {{ ram_stats.best_sodimm.capacity_gb if ram_stats.best_sodimm else '' }}GB · {{ ram_stats.best_sodimm.title if ram_stats.best_sodimm else "N/A" }}
+                    </p>
+                </div>
             </div>
 
-            <!-- Price Trend Filter -->
-            <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
-                <button onclick="setTrendFilter('all')" id="trend-all" class="filter-trend-btn px-3 py-1 rounded text-xs font-medium transition bg-sky-500 text-white">All Moves</button>
-                <button onclick="setTrendFilter('dropped')" id="trend-dropped" class="filter-trend-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">🟢 Drops</button>
-                <button onclick="setTrendFilter('increased')" id="trend-increased" class="filter-trend-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">🔴 Increases</button>
-            </div>
-
-            <!-- Sort By & Export View -->
-            <div class="flex items-center gap-2 w-full md:w-auto justify-end">
-                <span class="text-xs text-slate-400">Sort:</span>
-                <select id="sortSelect" onchange="applyFilters()" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500">
-                    <option value="aed_per_tb_asc">Best Current Value (AED/TB ↑)</option>
-                    <option value="min_aed_tb_asc">🏆 All-Time Record Value (Lowest Ever AED/TB)</option>
-                    <option value="diff_desc">Biggest Price Hike (↑)</option>
-                    <option value="diff_asc">Biggest Price Drop (↓)</option>
-                    <option value="price_asc">Price: Low to High</option>
-                    <option value="price_desc">Price: High to Low</option>
-                    <option value="capacity_desc">Capacity: High to Low</option>
-                </select>
-                <button onclick="exportFilteredToCSV()"
-                        class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs font-medium transition flex items-center gap-1 shadow-sm"
-                        title="Export current filtered view to CSV">
-                    <span>📄</span>
-                    <span>Export View</span>
-                </button>
+            <div class="bg-gradient-to-br from-amber-950/40 to-slate-900 border border-amber-500/30 rounded-xl p-4 flex flex-col justify-between">
+                <span class="text-xs text-amber-400 font-semibold uppercase tracking-wider">🔥 RAM All-Time Record Lows</span>
+                <div class="mt-2">
+                    <div class="flex items-baseline gap-1">
+                        <span id="ram-kpi-atls" class="text-2xl font-black text-amber-300 font-mono">{{ ram_stats.all_time_lows }}</span>
+                        <span class="text-xs text-slate-400">kits at record lowest price</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1" id="ram-kpi-total-kits">{{ ram_deals|length }} total RAM kits monitored</p>
+                </div>
             </div>
         </div>
 
-        <!-- Filter Pills (Capacity & Category) -->
-        <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/70 text-xs">
-            <span class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mr-1">Capacity:</span>
-            <button onclick="setCapacityFilter('all')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30" data-cap="all">All</button>
-            <button onclick="setCapacityFilter('1')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="1">1TB</button>
-            <button onclick="setCapacityFilter('2')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="2">2TB</button>
-            <button onclick="setCapacityFilter('3')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="3">3TB</button>
-            <button onclick="setCapacityFilter('4')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="4">4TB</button>
-            <button onclick="setCapacityFilter('6')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="6">6TB</button>
-            <button onclick="setCapacityFilter('8')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="8">8TB</button>
-            <button onclick="setCapacityFilter('10')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="10">10TB</button>
-            <button onclick="setCapacityFilter('12')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="12">12TB</button>
-            <button onclick="setCapacityFilter('14')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="14">14TB</button>
-            <button onclick="setCapacityFilter('16')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="16">16TB</button>
-            <button onclick="setCapacityFilter('18')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="18">18TB</button>
-            <button onclick="setCapacityFilter('20+')" class="cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cap="20+">20TB+</button>
+        <!-- RAM Filters & Instant Search Bar -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div class="flex flex-col md:flex-row gap-3 items-center justify-between">
+                <div class="relative w-full md:w-96">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">🔎</span>
+                    <input type="text" id="ramSearchInput" oninput="applyRamFilters()"
+                           placeholder="Filter RAM (e.g. Corsair, SODIMM, 6000MHz, Crucial, CL36)..."
+                           class="w-full bg-slate-800/80 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 transition">
+                </div>
 
-            <span class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider ml-4 mr-1">Type:</span>
-            <button onclick="setCategoryFilter('all')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30" data-cat="all">All</button>
-            <button onclick="setCategoryFilter('Enterprise')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="Enterprise">Enterprise</button>
-            <button onclick="setCategoryFilter('NAS')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="NAS">NAS</button>
-            <button onclick="setCategoryFilter('External')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="External">External (Shuckable)</button>
-            <button onclick="setCategoryFilter('Surveillance')" class="cat-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-cat="Surveillance">Surveillance</button>
+                <!-- RAM Generation Filter -->
+                <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
+                    <button onclick="setRamGenFilter('all')" id="ram-gen-all" class="ram-gen-btn px-3 py-1 rounded text-xs font-medium transition bg-purple-600 text-white">All Gen</button>
+                    <button onclick="setRamGenFilter('DDR5')" id="ram-gen-ddr5" class="ram-gen-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">🟣 DDR5</button>
+                    <button onclick="setRamGenFilter('DDR4')" id="ram-gen-ddr4" class="ram-gen-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">🔵 DDR4</button>
+                    <button onclick="setRamGenFilter('DDR3')" id="ram-gen-ddr3" class="ram-gen-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">⚪ DDR3</button>
+                </div>
 
-            <span id="filtered-count" class="ml-auto text-slate-500 text-xs">Showing {{ deals|length }} drives</span>
+                <!-- RAM Form Factor Filter -->
+                <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
+                    <button onclick="setRamFormFilter('all')" id="ram-form-all" class="ram-form-btn px-3 py-1 rounded text-xs font-medium transition bg-purple-600 text-white">All Forms</button>
+                    <button onclick="setRamFormFilter('desktop')" id="ram-form-desktop" class="ram-form-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Desktop (UDIMM)</button>
+                    <button onclick="setRamFormFilter('sodimm')" id="ram-form-sodimm" class="ram-form-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white" title="Crucial for DH4300 NAS and Laptops">Laptop/NAS (SODIMM)</button>
+                    <button onclick="setRamFormFilter('server')" id="ram-form-server" class="ram-form-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Server (ECC)</button>
+                </div>
+
+                <!-- RAM Store Filter -->
+                <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 w-full md:w-auto justify-center">
+                    <button onclick="setRamStoreFilter('all')" id="ram-store-all" class="ram-store-btn px-3 py-1 rounded text-xs font-medium transition bg-purple-600 text-white">All Stores</button>
+                    <button onclick="setRamStoreFilter('Amazon.ae')" id="ram-store-amazon" class="ram-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Amazon</button>
+                    <button onclick="setRamStoreFilter('Microless')" id="ram-store-microless" class="ram-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Microless</button>
+                    <button onclick="setRamStoreFilter('Al Ershad')" id="ram-store-ershad" class="ram-store-btn px-3 py-1 rounded text-xs font-medium transition text-slate-400 hover:text-white">Ershad</button>
+                </div>
+
+                <!-- Sort RAM -->
+                <div class="flex items-center gap-2 w-full md:w-auto justify-end">
+                    <span class="text-xs text-slate-400">Sort:</span>
+                    <select id="ramSortSelect" onchange="applyRamFilters()" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-purple-500">
+                        <option value="aed_gb_asc">Best Value (AED/GB ↑)</option>
+                        <option value="min_aed_gb_asc">🏆 All-Time Record Value (Lowest AED/GB)</option>
+                        <option value="speed_desc">Speed: High to Low (MHz ↓)</option>
+                        <option value="price_asc">Price: Low to High</option>
+                        <option value="price_desc">Price: High to Low</option>
+                        <option value="capacity_desc">Capacity: High to Low</option>
+                    </select>
+                    <button onclick="exportFilteredRamToCSV()"
+                            class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs font-medium transition flex items-center gap-1 shadow-sm"
+                            title="Export RAM deals to CSV">
+                        <span>📄</span>
+                        <span>Export View</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Capacity Filter Pills for RAM -->
+            <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/70 text-xs">
+                <span class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mr-1">Kit Capacity:</span>
+                <button onclick="setRamCapFilter('all')" class="ram-cap-pill px-2.5 py-1 rounded-md transition font-medium bg-purple-600/30 text-purple-300 border border-purple-500/40" data-ramcap="all">All</button>
+                <button onclick="setRamCapFilter('8')" class="ram-cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-ramcap="8">8GB</button>
+                <button onclick="setRamCapFilter('16')" class="ram-cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-ramcap="16">16GB</button>
+                <button onclick="setRamCapFilter('32')" class="ram-cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-ramcap="32">32GB</button>
+                <button onclick="setRamCapFilter('64')" class="ram-cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-ramcap="64">64GB</button>
+                <button onclick="setRamCapFilter('96+')" class="ram-cap-pill px-2.5 py-1 rounded-md transition font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700" data-ramcap="96+">96GB+</button>
+
+                <span id="ram-filtered-count" class="ml-auto text-slate-500 text-xs font-mono">Showing {{ ram_deals|length }} RAM kits</span>
+            </div>
         </div>
-    </div>
 
-    <!-- Deals Table -->
-    <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs" id="dealsTable">
-                <thead class="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold text-[11px] tracking-wider">
-                    <tr>
-                        <th class="py-3 px-3 text-center w-12">#</th>
-                        <th class="py-3 px-3 w-28">Store</th>
-                        <th class="py-3 px-3">Drive Description</th>
-                        <th class="py-3 px-3 w-28">Category</th>
-                        <th class="py-3 px-3 w-16 text-right">Size</th>
-                        <th class="py-3 px-3 w-28 text-right">Price (AED)</th>
-                        <th class="py-3 px-3 w-24 text-right">AED / TB</th>
-                        <th class="py-3 px-3 w-28 text-right">All-Time Low</th>
-                        <th class="py-3 px-3 w-20 text-center">Cond</th>
-                        <th class="py-3 px-3 w-24 text-center">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-800/60" id="dealsTbody">
-                    {% for d in deals %}
-                    <tr class="deal-row hover:bg-slate-800/50 transition cursor-pointer"
-                        data-asin="{{ d.asin }}"
-                        data-title="{{ d.title|lower }}"
-                        data-capacity="{{ d.capacity_tb }}"
-                        data-category="{{ d.category }}"
-                        data-price="{{ d.price_aed }}"
-                        data-aed-tb="{{ d.aed_per_tb }}"
-                        data-min-price="{{ d.min_price }}"
-                        data-min-aed-tb="{{ d.min_aed_per_tb }}"
-                        data-renewed="{{ 'true' if d.is_renewed else 'false' }}"
-                        data-store="{{ d.store }}"
-                        data-model="{{ d.model_number|lower }}"
-                        data-price-diff="{{ d.price_diff }}"
-                        onclick="showPriceHistory('{{ d.asin }}')">
-                        
-                        <!-- Rank & ATL Badge -->
-                        <td class="py-3 px-3 text-center font-mono text-slate-500">
-                            {% if d.is_all_time_low %}
-                            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30" title="At lowest price ever recorded!">
-                                🔥 {{ loop.index }}
-                            </span>
-                            {% else %}
-                            {{ loop.index }}
-                            {% endif %}
-                        </td>
-
-                        <!-- Store Badge -->
-                        <td class="py-3 px-3 font-medium">
-                            {% if d.store == 'Microless' %}
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                                🔴 Microless
-                            </span>
-                            {% elif d.store == 'Al Ershad' %}
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                                🟣 Al Ershad
-                            </span>
-                            {% else %}
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                📦 Amazon.ae
-                            </span>
-                            {% endif %}
-                        </td>
-
-                        <!-- Title + Model + Shuckable + Link -->
-                        <td class="py-3 px-3">
-                            <div class="flex items-start gap-1.5">
+        <!-- RAM Deals Table -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs" id="ramTable">
+                    <thead class="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-semibold text-[11px] tracking-wider">
+                        <tr>
+                            <th class="py-3 px-3 text-center w-12">#</th>
+                            <th class="py-3 px-3 w-28">Store</th>
+                            <th class="py-3 px-3">Memory Module & Specs</th>
+                            <th class="py-3 px-3 w-24">Generation</th>
+                            <th class="py-3 px-3 w-36">Form Factor</th>
+                            <th class="py-3 px-3 w-20 text-right">Capacity</th>
+                            <th class="py-3 px-3 w-20 text-right">Speed</th>
+                            <th class="py-3 px-3 w-28 text-right">Price (AED)</th>
+                            <th class="py-3 px-3 w-24 text-right">AED / GB</th>
+                            <th class="py-3 px-3 w-28 text-right">All-Time Low</th>
+                            <th class="py-3 px-3 w-20 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60" id="ramTbody">
+                        {% for r in ram_deals %}
+                        <tr class="ram-row hover:bg-slate-800/50 transition cursor-pointer"
+                            data-sku="{{ r.sku }}"
+                            data-title="{{ r.title|lower }}"
+                            data-gen="{{ r.generation }}"
+                            data-form="{{ r.form_factor|lower }}"
+                            data-capacity="{{ r.capacity_gb }}"
+                            data-speed="{{ r.speed_mhz }}"
+                            data-price="{{ r.price_aed }}"
+                            data-aed-gb="{{ r.aed_per_gb }}"
+                            data-min-price="{{ "%.2f"|format(r.min_price or r.price_aed) }}"
+                            data-min-aed-gb="{{ "%.2f"|format(r.min_aed_per_gb or r.aed_per_gb) }}"
+                            data-store="{{ r.store or "Amazon.ae" }}"
+                            data-model="{{ (r.model_number or "")|lower }}"
+                            data-price-diff="{{ r.price_diff or 0 }}"
+                            onclick="showRamPriceHistory('{{ r.sku }}')">
+                            <td class="py-3 px-3 text-center font-mono text-slate-500">
+                                {% if r.is_all_time_low %}
+                                    <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30" title="At lowest price ever recorded!">🔥 {{ loop.index }}</span>
+                                {% else %}
+                                    {{ loop.index }}
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3 font-medium">
+                                {% if r.store == 'Microless' %}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">🔴 Microless</span>
+                                {% elif r.store == 'Al Ershad' %}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">🟣 Al Ershad</span>
+                                {% else %}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">📦 Amazon.ae</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3">
                                 <div>
-                                    <span class="text-slate-100 font-medium hover:text-sky-300 transition">{{ d.title }}</span>
+                                    <span class="text-slate-100 font-medium hover:text-purple-300 transition">{{ r.title }}</span>
                                     <div class="flex items-center flex-wrap gap-1.5 mt-0.5">
-                                        {% if d.model_number %}
-                                        <span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-slate-800 text-sky-400 border border-sky-500/30" title="Manufacturer Model Number">
-                                            MPN: {{ d.model_number }}
-                                        </span>
+                                        <span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-slate-800 text-purple-300 border border-purple-500/30">{{ r.kit_config }}</span>
+                                        {% if r.cas_latency %}
+                                            <span class="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700">{{ r.cas_latency }}</span>
                                         {% endif %}
-                                        {% if d.is_shuckable %}
-                                        <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
-                                            ⚡ Shuckable
-                                        </span>
+                                        {% if r.model_number %}
+                                            <span class="px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-800 text-sky-400 border border-sky-500/30">MPN: {{ r.model_number }}</span>
                                         {% endif %}
-                                        {% if d.recording_tech == 'CMR ✅' %}
-                                        <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                                            CMR ✅ RAID Safe
-                                        </span>
-                                        {% elif d.recording_tech == 'SMR ⚠️' %}
-                                        <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                                            SMR ⚠️ Avoid for RAID
-                                        </span>
-                                        {% endif %}
-                                        {% if d.scraped_at %}
-                                        <span class="text-slate-500 text-[10px] font-mono ml-auto" title="Price last checked: {{ d.scraped_at }}">
-                                            🕒 {{ d.scraped_at[5:10] }} {{ d.scraped_at[11:16] }}
-                                        </span>
+                                        {% if r.scraped_at %}
+                                            <span class="text-slate-500 text-[10px] font-mono ml-auto" title="Price last checked">🕒 {{ r.scraped_at[5:10] }} {{ r.scraped_at[11:16] }}</span>
                                         {% endif %}
                                     </div>
                                 </div>
-                            </div>
-                        </td>
-
-                        <!-- Category -->
-                        <td class="py-3 px-3">
-                            {% if d.category == 'Enterprise' %}
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30">Enterprise</span>
-                            {% elif d.category == 'NAS' %}
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">NAS</span>
-                            {% elif d.category == 'External' %}
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">External</span>
-                            {% elif d.category == 'Surveillance' %}
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">Surveillance</span>
-                            {% else %}
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-700/60 text-slate-300">Internal</span>
-                            {% endif %}
-                        </td>
-
-                        <!-- Capacity -->
-                        <td class="py-3 px-3 text-right font-mono font-bold text-slate-200">
-                            {{ d.capacity_tb }}TB
-                        </td>
-
-                        <!-- Price + Fluctuation Delta -->
-                        <td class="py-3 px-3 text-right font-mono">
-                            <div class="text-amber-300 font-bold text-sm">AED {{ "%.2f"|format(d.price_aed) }}</div>
-                            {% if d.price_diff < 0 %}
-                            <div class="text-[10px] text-emerald-400 font-semibold" title="Was AED {{ '%.2f'|format(d.prev_price) if d.prev_price else '' }} before price drop">
-                                ↓ AED {{ "%.0f"|format(d.price_diff|abs) }} ({{ d.pct_diff }}%)
-                            </div>
-                            {% elif d.price_diff > 0 %}
-                            <div class="text-[10px] text-rose-400 font-semibold" title="Was AED {{ '%.2f'|format(d.prev_price) if d.prev_price else '' }}">
-                                ↑ AED {{ "%.0f"|format(d.price_diff) }} (+{{ d.pct_diff }}%)
-                            </div>
-                            {% endif %}
-                        </td>
-
-                        <!-- AED / TB -->
-                        <td class="py-3 px-3 text-right font-mono">
-                            <span class="px-2 py-1 rounded text-xs font-black
-                                {% if d.aed_per_tb <= 100 %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/40
-                                {% elif d.aed_per_tb <= 120 %}bg-sky-500/20 text-sky-300 border border-sky-500/30
-                                {% elif d.aed_per_tb <= 150 %}bg-yellow-500/20 text-yellow-300 border border-yellow-500/30
-                                {% else %}bg-rose-500/20 text-rose-300 border border-rose-500/30{% endif %}">
-                                {{ "%.2f"|format(d.aed_per_tb) }}
-                            </span>
-                        </td>
-
-                        <!-- All-Time Low -->
-                        <td class="py-3 px-3 text-right font-mono">
-                            <div class="text-amber-300 font-bold text-xs">AED {{ "%.2f"|format(d.min_price) }}</div>
-                            <div class="text-[10px] {% if d.is_all_time_low %}text-emerald-400 font-semibold{% else %}text-slate-400{% endif %}">
-                                {% if d.is_all_time_low %}
-                                🔥 {{ "%.1f"|format(d.min_aed_per_tb) }}/TB
+                            </td>
+                            <td class="py-3 px-3">
+                                {% if r.generation == 'DDR5' %}
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-500/25 text-purple-300 border border-purple-500/40">DDR5</span>
+                                {% elif r.generation == 'DDR4' %}
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-500/25 text-blue-300 border border-blue-500/40">DDR4</span>
                                 {% else %}
-                                {{ "%.1f"|format(d.min_aed_per_tb) }} AED/TB
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-700 text-slate-300 border border-slate-600">DDR3</span>
                                 {% endif %}
-                            </div>
-                        </td>
-
-                        <!-- Condition -->
-                        <td class="py-3 px-3 text-center font-medium">
-                            {% if d.is_renewed %}
-                                <span class="text-amber-400/90 text-[11px] bg-amber-500/10 px-1.5 py-0.5 rounded">Renewed</span>
-                            {% else %}
-                                <span class="text-emerald-400 text-[11px] bg-emerald-500/10 px-1.5 py-0.5 rounded">New</span>
-                            {% endif %}
-                        </td>
-
-                        <!-- Actions -->
-                        <td class="py-3 px-3 text-center" onclick="event.stopPropagation()">
-                            <div class="flex items-center justify-center gap-1.5">
-                                <button onclick="showPriceHistory('{{ d.asin }}')" class="p-1.5 hover:bg-slate-800 rounded text-slate-300 hover:text-sky-400 transition" title="View Price History Chart">
-                                    📈
-                                </button>
-                                <a href="{{ d.url }}" target="_blank" rel="noopener" class="p-1.5 hover:bg-slate-800 rounded text-sky-400 hover:text-sky-300 transition" title="Open on Amazon.ae">
-                                    🔗
-                                </a>
-                                <button onclick="hideListing('{{ d.asin }}', event)" class="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-rose-400 transition" title="Hide / Blacklist this listing">
-                                    🚫
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                            </td>
+                            <td class="py-3 px-3">
+                                {% if "sodimm" in r.form_factor|lower %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Laptop/NAS SODIMM</span>
+                                {% elif "server" in r.form_factor|lower or "ecc" in r.form_factor|lower %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">Server (ECC)</span>
+                                {% else %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">Desktop (UDIMM)</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3 text-right font-mono font-bold text-slate-200">{{ r.capacity_gb }}GB</td>
+                            <td class="py-3 px-3 text-right font-mono font-medium text-slate-300">{{ r.speed_mhz }} MHz</td>
+                            <td class="py-3 px-3 text-right font-mono">
+                                <div class="text-purple-300 font-bold text-sm">AED {{ "%.2f"|format(r.price_aed) }}</div>
+                                {% if r.price_diff < 0 %}
+                                    <div class="text-[10px] text-emerald-400 font-semibold" title="Was AED {{ "%.2f"|format(r.prev_price) }} before price drop">↓ AED {{ "%.0f"|format(r.price_diff|abs) }} ({{ r.pct_diff }}%)</div>
+                                {% elif r.price_diff > 0 %}
+                                    <div class="text-[10px] text-rose-400 font-semibold" title="Was AED {{ "%.2f"|format(r.prev_price) }} before price hike">↑ AED {{ "%.0f"|format(r.price_diff) }} (+{{ r.pct_diff }}%)</div>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3 text-right font-mono">
+                                <span class="px-2 py-1 rounded text-xs font-black
+                                    {% if r.aed_per_gb <= 30 %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/40
+                                    {% elif r.aed_per_gb <= 50 %}bg-sky-500/20 text-sky-300 border border-sky-500/30
+                                    {% elif r.aed_per_gb <= 75 %}bg-purple-500/20 text-purple-300 border border-purple-500/30
+                                    {% else %}bg-slate-800 text-slate-300 border border-slate-700{% endif %}">
+                                    {{ "%.2f"|format(r.aed_per_gb) }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-3 text-right font-mono">
+                                <div class="text-amber-300 font-bold text-xs">AED {{ "%.2f"|format(r.min_price or r.price_aed) }}</div>
+                                <div class="text-[10px]">
+                                    {% if r.is_all_time_low %}
+                                        <span class="text-emerald-400 font-semibold">🔥 {{ "%.2f"|format(r.min_aed_per_gb or r.aed_per_gb) }}/GB</span>
+                                    {% else %}
+                                        <span class="text-slate-400">{{ "%.2f"|format(r.min_aed_per_gb or r.aed_per_gb) }} AED/GB</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="py-3 px-3 text-center" onclick="event.stopPropagation()">
+                                <div class="flex items-center justify-center gap-1.5">
+                                    <button onclick="showRamPriceHistory('{{ r.sku }}')" class="p-1.5 hover:bg-slate-800 rounded text-slate-300 hover:text-purple-400 transition" title="Price History Chart">📈</button>
+                                    <a href="{{ r.url }}" target="_blank" rel="noopener" class="p-1.5 hover:bg-slate-800 rounded text-purple-400 hover:text-purple-300 transition" title="Open Product Page">🔗</a>
+                                    <button onclick="hideRamListing('{{ r.sku }}', event)" class="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-rose-400 transition" title="Hide this listing">🚫</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
+
 </div>
 
 <!-- Price History Chart Modal -->
@@ -514,11 +736,10 @@
 
         <div class="mb-4">
             <span id="modal-category" class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">Category</span>
-            <h3 id="modal-title" class="text-base font-bold text-white mt-2 leading-tight">Drive Title</h3>
-            <p id="modal-asin" class="text-xs text-slate-500 font-mono mt-0.5">ASIN: ---</p>
+            <h3 id="modal-title" class="text-base font-bold text-white mt-2 leading-tight">Product Title</h3>
+            <p id="modal-asin" class="text-xs text-slate-500 font-mono mt-0.5">SKU: ---</p>
         </div>
 
-        <!-- Metric badges -->
         <div class="grid grid-cols-4 gap-2 mb-5">
             <div class="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700/50">
                 <span class="text-[10px] text-slate-400 uppercase">Current</span>
@@ -548,7 +769,7 @@
             <span class="text-slate-500">History tracked locally in SQLite</span>
             <a id="modal-amazon-link" href="#" target="_blank" rel="noopener"
                class="bg-brand hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded-lg transition flex items-center gap-1.5">
-                <span>View on Amazon.ae</span>
+                <span>View Product Page</span>
                 <span>↗</span>
             </a>
         </div>
@@ -560,9 +781,55 @@
         navigator.serviceWorker.register('/sw.js');
     }
 
+    let activeTab = localStorage.getItem('hardwareTrackerTab') || 'hdd';
+
+    function switchTab(tab) {
+        activeTab = tab;
+        localStorage.setItem('hardwareTrackerTab', tab);
+
+        const hddTabBtn = document.getElementById('tab-btn-hdd');
+        const ramTabBtn = document.getElementById('tab-btn-ram');
+        const hddSec = document.getElementById('section-hdd');
+        const ramSec = document.getElementById('section-ram');
+        const scrapeBtnText = document.getElementById('scrape-btn-text');
+
+        if (tab === 'ram') {
+            hddTabBtn.classList.remove('active');
+            ramTabBtn.classList.add('active');
+            hddSec.classList.add('hidden');
+            ramSec.classList.remove('hidden');
+            scrapeBtnText.textContent = 'Scrape RAM';
+        } else {
+            ramTabBtn.classList.remove('active');
+            hddTabBtn.classList.add('active');
+            ramSec.classList.add('hidden');
+            hddSec.classList.remove('hidden');
+            scrapeBtnText.textContent = 'Scrape HDDs';
+        }
+    }
+
+    function triggerScrapeCurrentTab() {
+        if (activeTab === 'ram') {
+            triggerRamScrape();
+        } else {
+            triggerScrape();
+        }
+    }
+
+    function exportCurrentTabCSV() {
+        if (activeTab === 'ram') {
+            window.location.href = '/api/ram/export/csv';
+        } else {
+            window.location.href = '/api/export/csv';
+        }
+    }
+
+    // ── HDD Filters ──────────────────────────────────────────
     let activeCondition = 'all';
     let activeCapacity = 'all';
     let activeCategory = 'all';
+    let activeStore = 'all';
+    let activeTrend = 'all';
     let priceChart = null;
 
     function toggleSettings() {
@@ -576,13 +843,12 @@
             btn.classList.add('text-slate-400');
         });
         const active = document.getElementById(`cond-${cond}`);
-        active.classList.add('bg-sky-500', 'text-white');
-        active.classList.remove('text-slate-400');
+        if (active) {
+            active.classList.add('bg-sky-500', 'text-white');
+            active.classList.remove('text-slate-400');
+        }
         applyFilters();
     }
-
-    let activeStore = 'all';
-    let activeTrend = 'all';
 
     function setTrendFilter(trend) {
         activeTrend = trend;
@@ -654,7 +920,6 @@
             const isRenewed = row.getAttribute('data-renewed') === 'true';
             const store = row.getAttribute('data-store') || 'Amazon.ae';
             const model = (row.getAttribute('data-model') || '').toLowerCase();
-
             const priceDiff = parseFloat(row.getAttribute('data-price-diff') || '0');
 
             let matchesSearch = !query || title.includes(query) || cat.toLowerCase().includes(query) || store.toLowerCase().includes(query) || model.includes(query);
@@ -662,7 +927,7 @@
             let matchesCond = (activeCondition === 'all') ||
                               (activeCondition === 'new' && !isRenewed) ||
                               (activeCondition === 'renewed' && isRenewed);
-            
+
             let matchesCap = (activeCapacity === 'all') ||
                              (activeCapacity === '20+' && cap >= 20) ||
                              (parseInt(activeCapacity) === cap);
@@ -709,6 +974,133 @@
         document.getElementById('filtered-count').textContent = `Showing ${visibleCount} drives`;
     }
 
+    // ── RAM Filters ──────────────────────────────────────────
+    let activeRamGen = 'all';
+    let activeRamForm = 'all';
+    let activeRamStore = 'all';
+    let activeRamCap = 'all';
+
+    function setRamGenFilter(gen) {
+        activeRamGen = gen;
+        document.querySelectorAll('.ram-gen-btn').forEach(btn => {
+            btn.classList.remove('bg-purple-600', 'text-white');
+            btn.classList.add('text-slate-400');
+        });
+        const idMap = { 'all': 'ram-gen-all', 'DDR5': 'ram-gen-ddr5', 'DDR4': 'ram-gen-ddr4', 'DDR3': 'ram-gen-ddr3' };
+        const active = document.getElementById(idMap[gen] || 'ram-gen-all');
+        if (active) {
+            active.classList.add('bg-purple-600', 'text-white');
+            active.classList.remove('text-slate-400');
+        }
+        applyRamFilters();
+    }
+
+    function setRamFormFilter(form) {
+        activeRamForm = form;
+        document.querySelectorAll('.ram-form-btn').forEach(btn => {
+            btn.classList.remove('bg-purple-600', 'text-white');
+            btn.classList.add('text-slate-400');
+        });
+        const idMap = { 'all': 'ram-form-all', 'desktop': 'ram-form-desktop', 'sodimm': 'ram-form-sodimm', 'server': 'ram-form-server' };
+        const active = document.getElementById(idMap[form] || 'ram-form-all');
+        if (active) {
+            active.classList.add('bg-purple-600', 'text-white');
+            active.classList.remove('text-slate-400');
+        }
+        applyRamFilters();
+    }
+
+    function setRamStoreFilter(store) {
+        activeRamStore = store;
+        document.querySelectorAll('.ram-store-btn').forEach(btn => {
+            btn.classList.remove('bg-purple-600', 'text-white');
+            btn.classList.add('text-slate-400');
+        });
+        const idMap = { 'all': 'ram-store-all', 'Amazon.ae': 'ram-store-amazon', 'Microless': 'ram-store-microless', 'Al Ershad': 'ram-store-ershad' };
+        const active = document.getElementById(idMap[store] || 'ram-store-all');
+        if (active) {
+            active.classList.add('bg-purple-600', 'text-white');
+            active.classList.remove('text-slate-400');
+        }
+        applyRamFilters();
+    }
+
+    function setRamCapFilter(cap) {
+        activeRamCap = cap;
+        document.querySelectorAll('.ram-cap-pill').forEach(btn => {
+            btn.classList.remove('bg-purple-600/30', 'text-purple-300', 'border-purple-500/40');
+            btn.classList.add('bg-slate-800', 'text-slate-300', 'border-slate-700');
+            if (btn.getAttribute('data-ramcap') === cap) {
+                btn.classList.add('bg-purple-600/30', 'text-purple-300', 'border-purple-500/40');
+                btn.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+            }
+        });
+        applyRamFilters();
+    }
+
+    function applyRamFilters() {
+        const query = (document.getElementById('ramSearchInput').value || '').toLowerCase().trim();
+        const rows = Array.from(document.querySelectorAll('.ram-row'));
+        const sortVal = document.getElementById('ramSortSelect').value;
+
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const title = row.getAttribute('data-title');
+            const gen = row.getAttribute('data-gen');
+            const form = row.getAttribute('data-form');
+            const cap = parseInt(row.getAttribute('data-capacity'));
+            const store = row.getAttribute('data-store') || 'Amazon.ae';
+            const model = (row.getAttribute('data-model') || '').toLowerCase();
+
+            let matchesSearch = !query || title.includes(query) || store.toLowerCase().includes(query) || model.includes(query);
+            let matchesGen = (activeRamGen === 'all') || (gen.toLowerCase() === activeRamGen.toLowerCase());
+            let matchesForm = (activeRamForm === 'all') || (form.includes(activeRamForm.toLowerCase()));
+            let matchesStore = (activeRamStore === 'all') || (store.toLowerCase() === activeRamStore.toLowerCase());
+            let matchesCap = (activeRamCap === 'all') ||
+                             (activeRamCap === '96+' && cap >= 96) ||
+                             (parseInt(activeRamCap) === cap);
+
+            if (matchesSearch && matchesGen && matchesForm && matchesStore && matchesCap) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        // Sorting RAM
+        const tbody = document.getElementById('ramTbody');
+        rows.sort((a, b) => {
+            const aAedGb = parseFloat(a.getAttribute('data-aed-gb'));
+            const bAedGb = parseFloat(b.getAttribute('data-aed-gb'));
+            const aMinGb = parseFloat(a.getAttribute('data-min-aed-gb') || '9999');
+            const bMinGb = parseFloat(b.getAttribute('data-min-aed-gb') || '9999');
+            const aSpeed = parseInt(a.getAttribute('data-speed') || '0');
+            const bSpeed = parseInt(b.getAttribute('data-speed') || '0');
+            const aPrice = parseFloat(a.getAttribute('data-price'));
+            const bPrice = parseFloat(b.getAttribute('data-price'));
+            const aCap = parseInt(a.getAttribute('data-capacity'));
+            const bCap = parseInt(b.getAttribute('data-capacity'));
+
+            if (sortVal === 'aed_gb_asc') return aAedGb - bAedGb;
+            if (sortVal === 'min_aed_gb_asc') return aMinGb - bMinGb;
+            if (sortVal === 'speed_desc') return bSpeed - aSpeed;
+            if (sortVal === 'price_asc') return aPrice - bPrice;
+            if (sortVal === 'price_desc') return bPrice - aPrice;
+            if (sortVal === 'capacity_desc') return bCap - aCap;
+            return 0;
+        });
+
+        rows.forEach(row => tbody.appendChild(row));
+        document.getElementById('ram-filtered-count').textContent = `Showing ${visibleCount} RAM kits`;
+    }
+
+    // ── History Modals ───────────────────────────────────────
+    function closeModal() {
+        document.getElementById('historyModal').classList.add('hidden');
+    }
+
     async function showPriceHistory(asin) {
         const modal = document.getElementById('historyModal');
         modal.classList.remove('hidden');
@@ -718,8 +1110,8 @@
             const data = await res.json();
             
             document.getElementById('modal-title').textContent = data.drive ? data.drive.title : 'Drive History';
-            document.getElementById('modal-asin').textContent = `ASIN: ${asin}`;
-            document.getElementById('modal-category').textContent = data.drive ? data.drive.category : 'HDD';
+            document.getElementById('modal-asin').textContent = `ASIN / SKU: ${asin}`;
+            document.getElementById('modal-category').textContent = data.drive ? `${data.drive.category} · ${data.drive.capacity_tb}TB` : 'HDD';
             document.getElementById('modal-amazon-link').href = data.drive ? data.drive.url : `https://www.amazon.ae/dp/${asin}`;
 
             const stats = data.stats || {};
@@ -728,13 +1120,39 @@
             document.getElementById('stat-highest').textContent = stats.highest ? `AED ${stats.highest.toFixed(2)}` : '--';
             document.getElementById('stat-points').textContent = stats.data_points || '1';
 
-            renderChart(data.history || []);
+            renderChart(data.history || [], 'HDD Price (AED)', '#0ea5e9');
         } catch (e) {
             console.error('Error fetching history:', e);
         }
     }
 
-    function renderChart(history) {
+    async function showRamPriceHistory(sku) {
+        const modal = document.getElementById('historyModal');
+        modal.classList.remove('hidden');
+
+        try {
+            const res = await fetch(`/api/ram/history/${sku}`);
+            const data = await res.json();
+            const mod = data.module || {};
+            
+            document.getElementById('modal-title').textContent = mod.title || 'Memory Module';
+            document.getElementById('modal-asin').textContent = `SKU: ${sku}`;
+            document.getElementById('modal-category').textContent = `${mod.generation || 'RAM'} · ${mod.form_factor || 'UDIMM'} · ${mod.capacity_gb || ''}GB`;
+            document.getElementById('modal-amazon-link').href = mod.url || `#`;
+
+            const stats = data.stats || {};
+            document.getElementById('stat-current').textContent = stats.current ? `AED ${stats.current.toFixed(2)}` : '--';
+            document.getElementById('stat-lowest').textContent = stats.lowest ? `AED ${stats.lowest.toFixed(2)}` : '--';
+            document.getElementById('stat-highest').textContent = stats.highest ? `AED ${stats.highest.toFixed(2)}` : '--';
+            document.getElementById('stat-points').textContent = stats.data_points || '1';
+
+            renderChart(data.history || [], 'RAM Price (AED)', '#a855f7');
+        } catch (e) {
+            console.error('Error fetching RAM history:', e);
+        }
+    }
+
+    function renderChart(history, labelText, colorHex) {
         const ctx = document.getElementById('priceChartCanvas').getContext('2d');
         if (priceChart) priceChart.destroy();
 
@@ -746,15 +1164,14 @@
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Price (AED)',
+                    label: labelText || 'Price (AED)',
                     data: prices,
-                    borderColor: '#0ea5e9',
-                    backgroundColor: 'rgba(14, 165, 233, 0.12)',
-                    borderWidth: 2.5,
+                    borderColor: colorHex || '#0ea5e9',
+                    backgroundColor: `${colorHex || '#0ea5e9'}22`,
                     fill: true,
-                    tension: 0.3,
+                    tension: 0.2,
                     pointRadius: 4,
-                    pointBackgroundColor: '#38bdf8'
+                    pointBackgroundColor: colorHex || '#0ea5e9'
                 }]
             },
             options: {
@@ -764,38 +1181,126 @@
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: function(context) { return `AED ${context.parsed.y.toFixed(2)}`; }
+                            label: (c) => `AED ${c.raw.toFixed(2)}`
                         }
                     }
                 },
                 scales: {
-                    x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } },
-                    y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', callback: val => `AED ${val}` } }
+                    x: { grid: { color: '#1f2937' }, ticks: { color: '#9ca3af' } },
+                    y: {
+                        grid: { color: '#1f2937' },
+                        ticks: {
+                            color: '#9ca3af',
+                            callback: (v) => `AED ${v}`
+                        }
+                    }
                 }
             }
         });
     }
 
-    function closeModal() {
-        document.getElementById('historyModal').classList.add('hidden');
-    }
-
-    window.onclick = function(event) {
-        const modal = document.getElementById('historyModal');
-        if (event.target === modal) closeModal();
-    };
-
+    // ── Live Scraping & Background Progress ───────────────────
     let isTrackingProgress = false;
     let progressPollTimer = null;
     let lastDrivesCount = 0;
 
+    async function checkScrapeProgress() {
+        try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            const live = (activeTab === 'ram' && data.live_ram_scrape && data.live_ram_scrape.is_running)
+                         ? data.live_ram_scrape
+                         : (data.live_scrape || {});
+            const banner = document.getElementById('live-progress-banner');
+            const btn = document.getElementById('scrape-btn');
+
+            if (live.is_running) {
+                isTrackingProgress = true;
+                banner.classList.remove('hidden');
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳</span><span>Scraping...</span>';
+                btn.classList.add('opacity-60');
+
+                document.getElementById('progress-query').textContent = live.current_query || 'Searching retailers...';
+                document.getElementById('progress-count').textContent = `${live.drives_found || live.kits_found || 0} items cataloged`;
+                document.getElementById('progress-pct').textContent = `${live.pct || 0}%`;
+                document.getElementById('progress-bar-fill').style.width = `${live.pct || 0}%`;
+                document.getElementById('progress-step-text').textContent = `Step ${live.current_index} of ${live.total_queries}`;
+
+                if (activeTab === 'hdd' && live.drives_found > lastDrivesCount) {
+                    lastDrivesCount = live.drives_found;
+                    refreshDealsTable();
+                }
+            } else if (isTrackingProgress) {
+                isTrackingProgress = false;
+                banner.classList.remove('hidden');
+                document.getElementById('progress-pct').textContent = '100%';
+                document.getElementById('progress-bar-fill').style.width = '100%';
+                document.getElementById('progress-step-text').textContent = '✅ Scrape complete! Updated live.';
+                
+                if (activeTab === 'hdd') refreshDealsTable();
+                else location.reload();
+
+                if (progressPollTimer) clearInterval(progressPollTimer);
+                setTimeout(() => {
+                    banner.classList.add('hidden');
+                    btn.disabled = false;
+                    btn.innerHTML = `<span>🔄</span><span>${activeTab === 'ram' ? 'Scrape RAM' : 'Scrape HDDs'}</span>`;
+                    btn.classList.remove('opacity-60');
+                }, 3000);
+            }
+        } catch (e) {
+            console.error('Error checking progress:', e);
+        }
+    }
+
+    async function triggerScrape() {
+        const btn = document.getElementById('scrape-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Starting...</span>';
+        btn.classList.add('opacity-60');
+        document.getElementById('live-progress-banner').classList.remove('hidden');
+        document.getElementById('progress-query').textContent = 'Starting HDD scrape...';
+        lastDrivesCount = 0;
+
+        try {
+            await fetch('/api/scrape', { method: 'POST' });
+            isTrackingProgress = true;
+            if (progressPollTimer) clearInterval(progressPollTimer);
+            progressPollTimer = setInterval(checkScrapeProgress, 1200);
+        } catch (e) {
+            btn.innerHTML = '<span>🔄</span><span>Scrape HDDs</span>';
+            btn.disabled = false;
+            btn.classList.remove('opacity-60');
+        }
+    }
+
+    async function triggerRamScrape() {
+        const btn = document.getElementById('scrape-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Starting...</span>';
+        btn.classList.add('opacity-60');
+        document.getElementById('live-progress-banner').classList.remove('hidden');
+        document.getElementById('progress-query').textContent = 'Starting RAM scrape...';
+
+        try {
+            await fetch('/api/scrape/ram', { method: 'POST' });
+            isTrackingProgress = true;
+            if (progressPollTimer) clearInterval(progressPollTimer);
+            progressPollTimer = setInterval(checkScrapeProgress, 1200);
+        } catch (e) {
+            btn.innerHTML = '<span>🔄</span><span>Scrape RAM</span>';
+            btn.disabled = false;
+            btn.classList.remove('opacity-60');
+        }
+    }
+
     async function refreshDealsTable() {
         try {
-            const res = await fetch('/api/deals?min_tb=1');
+            const res = await fetch('/api/deals?limit=500');
             const deals = await res.json();
             if (!deals || deals.length === 0) return;
-
-            const tbody = document.getElementById('dealsTbody');
+            // re-render HDD table
             let html = '';
             deals.forEach((d, idx) => {
                 const isAtl = d.is_all_time_low;
@@ -840,11 +1345,11 @@
                 }
 
                 let modelHtml = d.model_number 
-                    ? `<span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-slate-800 text-sky-400 border border-sky-500/30" title="Manufacturer Model Number">MPN: ${d.model_number}</span>`
+                    ? `<span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-slate-800 text-sky-400 border border-sky-500/30">MPN: ${d.model_number}</span>`
                     : '';
 
                 let timeStr = d.scraped_at ? (d.scraped_at.substring(5, 10) + ' ' + d.scraped_at.substring(11, 16)) : '';
-                let timeHtml = timeStr ? `<span class="text-slate-500 text-[10px] font-mono ml-auto" title="Price last checked: ${d.scraped_at}">🕒 ${timeStr}</span>` : '';
+                let timeHtml = timeStr ? `<span class="text-slate-500 text-[10px] font-mono ml-auto">🕒 ${timeStr}</span>` : '';
 
                 html += `
                 <tr class="deal-row hover:bg-slate-800/50 transition cursor-pointer"
@@ -864,11 +1369,9 @@
                     <td class="py-3 px-3 text-center font-mono text-slate-500">${rankHtml}</td>
                     <td class="py-3 px-3 font-medium">${storeBadge}</td>
                     <td class="py-3 px-3">
-                        <div class="flex items-start gap-1.5">
-                            <div>
-                                <span class="text-slate-100 font-medium hover:text-sky-300 transition">${d.title}</span>
-                                <div class="flex items-center flex-wrap gap-1.5 mt-0.5">${modelHtml} ${shuckHtml} ${recHtml} ${timeHtml}</div>
-                            </div>
+                        <div>
+                            <span class="text-slate-100 font-medium hover:text-sky-300 transition">${d.title}</span>
+                            <div class="flex items-center flex-wrap gap-1.5 mt-0.5">${modelHtml} ${shuckHtml} ${recHtml} ${timeHtml}</div>
                         </div>
                     </td>
                     <td class="py-3 px-3">${catBadge}</td>
@@ -891,111 +1394,53 @@
                     <td class="py-3 px-3 text-center font-medium">${condHtml}</td>
                     <td class="py-3 px-3 text-center" onclick="event.stopPropagation()">
                         <div class="flex items-center justify-center gap-1.5">
-                            <button onclick="showPriceHistory('${d.asin}')" class="p-1.5 hover:bg-slate-800 rounded text-slate-300 hover:text-sky-400 transition" title="View Price History Chart">📈</button>
-                            <a href="${d.url}" target="_blank" rel="noopener" class="p-1.5 hover:bg-slate-800 rounded text-sky-400 hover:text-sky-300 transition" title="Open on Amazon.ae">🔗</a>
-                            <button onclick="hideListing('${d.asin}', event)" class="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-rose-400 transition" title="Hide / Blacklist this listing">🚫</button>
+                            <button onclick="showPriceHistory('${d.asin}')" class="p-1.5 hover:bg-slate-800 rounded text-slate-300 hover:text-sky-400 transition" title="View Price History">📈</button>
+                            <a href="${d.url}" target="_blank" rel="noopener" class="p-1.5 hover:bg-slate-800 rounded text-sky-400 hover:text-sky-300 transition" title="Open Store Page">🔗</a>
+                            <button onclick="hideListing('${d.asin}', event)" class="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-rose-400 transition" title="Hide this listing">🚫</button>
                         </div>
                     </td>
                 </tr>`;
             });
-            tbody.innerHTML = html;
+            document.getElementById('dealsTbody').innerHTML = html;
             applyFilters();
-
-            // Refresh KPI Stats live
-            const statsRes = await fetch('/api/stats');
-            const stats = await statsRes.json();
-            if (stats) {
-                if (stats.best_deal) {
-                    document.getElementById('kpi-best-val').textContent = stats.best_deal.aed_per_tb.toFixed(1);
-                    document.getElementById('kpi-best-title').textContent = `${stats.best_deal.capacity}TB · ${stats.best_deal.title}`;
-                }
-                document.getElementById('kpi-atls').textContent = stats.all_time_lows || 0;
-                document.getElementById('kpi-under-100').textContent = stats.drives_under_100 || 0;
-                document.getElementById('kpi-total').textContent = stats.total_drives || deals.length;
-            }
         } catch (e) {
             console.error('Error streaming deals:', e);
         }
     }
 
-    async function checkScrapeProgress() {
+    // Initialize tab and poll progress
+    switchTab(activeTab);
+    progressPollTimer = setInterval(checkScrapeProgress, 2000);
+    checkScrapeProgress();
+
+    // ── Hide & Blacklist Handlers ─────────────────────────────
+    async function hideListing(asin, event) {
+        if (event) event.stopPropagation();
+        if (!confirm('Hide this HDD listing from tracking?')) return;
         try {
-            const res = await fetch('/api/status');
-            const data = await res.json();
-            const live = data.live_scrape || {};
-            const banner = document.getElementById('live-progress-banner');
-            const btn = document.getElementById('scrape-btn');
-
-            if (live.is_running) {
-                isTrackingProgress = true;
-                banner.classList.remove('hidden');
-                btn.disabled = true;
-                btn.innerHTML = '<span>⏳</span><span>Scraping...</span>';
-                btn.classList.add('opacity-60');
-
-                document.getElementById('progress-query').textContent = live.current_query || 'Starting searches...';
-                document.getElementById('progress-count').textContent = `${live.drives_found || 0} drives cataloged`;
-                document.getElementById('progress-pct').textContent = `${live.pct || 0}%`;
-                document.getElementById('progress-bar-fill').style.width = `${live.pct || 0}%`;
-                document.getElementById('progress-step-text').textContent = `Query ${live.current_index} of ${live.total_queries}`;
-
-                // If new drives arrived, stream them into the table right now!
-                if (live.drives_found > lastDrivesCount) {
-                    lastDrivesCount = live.drives_found;
-                    refreshDealsTable();
-                }
-            } else if (isTrackingProgress) {
-                // Was running and just completed!
-                isTrackingProgress = false;
-                banner.classList.remove('hidden');
-                document.getElementById('progress-pct').textContent = '100%';
-                document.getElementById('progress-bar-fill').style.width = '100%';
-                document.getElementById('progress-step-text').textContent = '✅ Scrape complete! All deals updated live.';
-                document.getElementById('progress-query').textContent = 'Finished cataloging.';
-                
-                await refreshDealsTable();
-                if (progressPollTimer) clearInterval(progressPollTimer);
-                setTimeout(() => {
-                    banner.classList.add('hidden');
-                    btn.disabled = false;
-                    btn.innerHTML = '<span>🔄</span><span>Scrape Now</span>';
-                    btn.classList.remove('opacity-60');
-                }, 3000);
-            } else {
-                banner.classList.add('hidden');
-                btn.disabled = false;
-                btn.innerHTML = '<span>🔄</span><span>Scrape Now</span>';
-                btn.classList.remove('opacity-60');
+            const res = await fetch(`/api/hide/${asin}`, { method: 'POST' });
+            if (res.ok) {
+                document.querySelectorAll(`tr[data-asin="${asin}"]`).forEach(r => r.remove());
+                applyFilters();
             }
         } catch (e) {
-            console.error('Error checking scrape progress:', e);
+            console.error('Error hiding HDD:', e);
         }
     }
 
-    async function triggerScrape() {
-        const btn = document.getElementById('scrape-btn');
-        btn.disabled = true;
-        btn.innerHTML = '<span>⏳</span><span>Starting...</span>';
-        btn.classList.add('opacity-60');
-        document.getElementById('live-progress-banner').classList.remove('hidden');
-        document.getElementById('progress-query').textContent = 'Initializing Amazon.ae Playwright session...';
-        lastDrivesCount = 0;
-
+    async function hideRamListing(sku, event) {
+        if (event) event.stopPropagation();
+        if (!confirm('Hide this RAM listing from tracking?')) return;
         try {
-            await fetch('/api/scrape', { method: 'POST' });
-            isTrackingProgress = true;
-            if (progressPollTimer) clearInterval(progressPollTimer);
-            progressPollTimer = setInterval(checkScrapeProgress, 1200);
+            const res = await fetch(`/api/ram/hide/${sku}`, { method: 'POST' });
+            if (res.ok) {
+                document.querySelectorAll(`tr[data-sku="${sku}"]`).forEach(r => r.remove());
+                applyRamFilters();
+            }
         } catch (e) {
-            btn.innerHTML = '<span>🔄</span><span>Scrape Now</span>';
-            btn.disabled = false;
-            btn.classList.remove('opacity-60');
+            console.error('Error hiding RAM:', e);
         }
     }
-
-    // Start background check on page load in case a scrape is already running
-    progressPollTimer = setInterval(checkScrapeProgress, 1500);
-    checkScrapeProgress();
 
     async function saveSettings(e) {
         const btn = e.target;
@@ -1042,50 +1487,13 @@
         }
     }
 
-    async function hideListing(asin, event) {
-        if (event) event.stopPropagation();
-        if (!confirm('Hide this listing from your deals and blacklist it from future scrapes?')) return;
-        try {
-            const res = await fetch(`/api/hide/${asin}`, { method: 'POST' });
-            if (res.ok) {
-                const rows = document.querySelectorAll(`tr[data-asin="${asin}"]`);
-                rows.forEach(r => {
-                    r.style.transition = 'all 0.3s ease';
-                    r.style.opacity = '0';
-                    r.style.transform = 'scale(0.95)';
-                    setTimeout(() => {
-                        r.remove();
-                        applyFilters();
-                        const totalEl = document.getElementById('kpi-total');
-                        if (totalEl) {
-                            const cur = parseInt(totalEl.textContent) || 0;
-                            if (cur > 0) totalEl.textContent = (cur - 1);
-                        }
-                    }, 300);
-                });
-            }
-        } catch (e) {
-            console.error('Error hiding listing:', e);
-        }
-    }
-
     function exportFilteredToCSV() {
         const rows = Array.from(document.querySelectorAll('#dealsTbody tr.deal-row'))
             .filter(r => r.style.display !== 'none');
-        
-        if (rows.length === 0) {
-            alert('No drives visible to export.');
-            return;
-        }
+        if (rows.length === 0) { alert('No drives visible to export.'); return; }
 
-        const headers = [
-            "Rank", "Store", "Model Number", "ASIN / SKU", "Title", "Capacity (TB)", "Category",
-            "Recording Tech", "Price (AED)", "AED / TB", "All-Time Low Price (AED)",
-            "All-Time Low AED/TB", "Condition", "Product URL"
-        ];
-
+        const headers = ["Rank", "Store", "Model Number", "ASIN / SKU", "Title", "Capacity (TB)", "Category", "Recording Tech", "Price (AED)", "AED / TB", "All-Time Low Price (AED)", "All-Time Low AED/TB", "Condition", "Product URL"];
         const csvRows = [headers.join(',')];
-
         rows.forEach((row, idx) => {
             const asin = row.getAttribute('data-asin') || '';
             const cap = row.getAttribute('data-capacity') || '';
@@ -1097,45 +1505,56 @@
             const atlPrice = parseFloat(row.getAttribute('data-min-price') || price).toFixed(2);
             const atlAedTb = parseFloat(row.getAttribute('data-min-aed-tb') || aedTb).toFixed(2);
             const renewed = row.getAttribute('data-renewed') === 'true' ? 'Renewed' : 'New';
-            
             const titleEl = row.querySelector('.text-slate-100');
             const title = titleEl ? titleEl.textContent.trim().replace(/"/g, '""') : '';
-            
             let tech = 'Unknown';
             if (row.textContent.includes('CMR ✅')) tech = 'CMR ✅';
             else if (row.textContent.includes('SMR ⚠️')) tech = 'SMR ⚠️';
-
-            // Get actual link from row actions
             const linkEl = row.querySelector('a[href]');
-            const url = linkEl ? linkEl.getAttribute('href') : (store === 'Microless' ? `https://uae.microless.com` : (store === 'Al Ershad' ? `https://alershadonline.com` : `https://www.amazon.ae/dp/${asin}`));
+            const url = linkEl ? linkEl.getAttribute('href') : `https://www.amazon.ae/dp/${asin}`;
 
-            csvRows.push([
-                idx + 1,
-                `"${store}"`,
-                `"${model.toUpperCase()}"`,
-                `"${asin}"`,
-                `"${title}"`,
-                cap,
-                `"${cat}"`,
-                `"${tech}"`,
-                price,
-                aedTb,
-                atlPrice,
-                atlAedTb,
-                renewed,
-                `"${url}"`
-            ].join(','));
+            csvRows.push([idx + 1, `"${store}"`, `"${model.toUpperCase()}"`, `"${asin}"`, `"${title}"`, cap, `"${cat}"`, `"${tech}"`, price, aedTb, atlPrice, atlAedTb, renewed, `"${url}"`].join(','));
         });
 
         const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', `uae_hdd_deals_view_${new Date().toISOString().slice(0,10)}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
+        link.href = URL.createObjectURL(blob);
+        link.download = `uae_hdd_deals_${new Date().toISOString().slice(0,10)}.csv`;
         link.click();
-        document.body.removeChild(link);
+    }
+
+    function exportFilteredRamToCSV() {
+        const rows = Array.from(document.querySelectorAll('#ramTbody tr.ram-row'))
+            .filter(r => r.style.display !== 'none');
+        if (rows.length === 0) { alert('No RAM kits visible to export.'); return; }
+
+        const headers = ["Rank", "Store", "Model Number", "SKU", "Title", "Generation", "Form Factor", "Capacity (GB)", "Speed (MHz)", "Price (AED)", "AED / GB", "All-Time Low Price (AED)", "All-Time Low AED/GB", "Product URL"];
+        const csvRows = [headers.join(',')];
+        rows.forEach((row, idx) => {
+            const sku = row.getAttribute('data-sku') || '';
+            const gen = row.getAttribute('data-gen') || '';
+            const form = row.getAttribute('data-form') || '';
+            const cap = row.getAttribute('data-capacity') || '';
+            const speed = row.getAttribute('data-speed') || '';
+            const store = row.getAttribute('data-store') || 'Amazon.ae';
+            const model = row.getAttribute('data-model') || '';
+            const price = parseFloat(row.getAttribute('data-price') || '0').toFixed(2);
+            const aedGb = parseFloat(row.getAttribute('data-aed-gb') || '0').toFixed(2);
+            const atlPrice = parseFloat(row.getAttribute('data-min-price') || price).toFixed(2);
+            const atlAedGb = parseFloat(row.getAttribute('data-min-aed-gb') || aedGb).toFixed(2);
+            const titleEl = row.querySelector('.text-slate-100');
+            const title = titleEl ? titleEl.textContent.trim().replace(/"/g, '""') : '';
+            const linkEl = row.querySelector('a[href]');
+            const url = linkEl ? linkEl.getAttribute('href') : `#`;
+
+            csvRows.push([idx + 1, `"${store}"`, `"${model.toUpperCase()}"`, `"${sku}"`, `"${title}"`, `"${gen}"`, `"${form}"`, cap, speed, price, aedGb, atlPrice, atlAedGb, `"${url}"`].join(','));
+        });
+
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `uae_ram_deals_${new Date().toISOString().slice(0,10)}.csv`;
+        link.click();
     }
 </script>
 

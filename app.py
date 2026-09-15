@@ -36,6 +36,18 @@ live_scrape_state = {
     "error": None
 }
 
+live_ram_scrape_state = {
+    "is_running": False,
+    "current_query": "",
+    "current_index": 0,
+    "total_queries": 0,
+    "kits_found": 0,
+    "pct": 0,
+    "started_at": None,
+    "finished_at": None,
+    "error": None
+}
+
 
 def on_scrape_progress(current_idx, total_queries, query, drives_found):
     live_scrape_state["current_index"] = current_idx
@@ -43,6 +55,41 @@ def on_scrape_progress(current_idx, total_queries, query, drives_found):
     live_scrape_state["current_query"] = query
     live_scrape_state["drives_found"] = drives_found
     live_scrape_state["pct"] = int((current_idx / total_queries) * 100) if total_queries else 0
+
+
+def run_ram_scrape_job():
+    """Run RAM scraper across Amazon.ae, Microless, and Al Ershad."""
+    import ram_scraper
+    logger.info("Multi-retailer RAM scrape starting...")
+    live_ram_scrape_state["is_running"] = True
+    live_ram_scrape_state["pct"] = 0
+    live_ram_scrape_state["current_index"] = 0
+    live_ram_scrape_state["kits_found"] = 0
+    live_ram_scrape_state["error"] = None
+    live_ram_scrape_state["started_at"] = datetime.now(timezone.utc).isoformat()
+    live_ram_scrape_state["finished_at"] = None
+
+    def on_ram_progress(cur, total, q, found):
+        live_ram_scrape_state["current_index"] = cur
+        live_ram_scrape_state["total_queries"] = total
+        live_ram_scrape_state["current_query"] = q
+        live_ram_scrape_state["kits_found"] = found
+        live_ram_scrape_state["pct"] = int((cur / total) * 100) if total else 0
+
+    try:
+        kits = ram_scraper.scrape_all_ram(
+            progress_callback=on_ram_progress,
+            batch_callback=None
+        )
+        live_ram_scrape_state["pct"] = 100
+        live_ram_scrape_state["kits_found"] = len(kits)
+        logger.info(f"RAM scrape complete: {len(kits)} modules found")
+    except Exception as e:
+        logger.error(f"RAM scrape failed: {e}")
+        live_ram_scrape_state["error"] = str(e)
+    finally:
+        live_ram_scrape_state["is_running"] = False
+        live_ram_scrape_state["finished_at"] = datetime.now(timezone.utc).isoformat()
 
 
 def run_scrape_job():
@@ -124,6 +171,11 @@ def run_scrape_job():
         logger.info(f"Multi-retailer scrape complete: {total_drives_found} drives found ({len(amazon_drives)} Amazon.ae, {len(microless_drives)} Microless, {len(ershad_drives)} Al Ershad)")
         # Fire alerts
         asyncio.run(alerts.check_and_alert())
+        # Run RAM scraping in sequence
+        try:
+            run_ram_scrape_job()
+        except Exception as ram_err:
+            logger.error(f"Sequential RAM scrape failed: {ram_err}")
     except Exception as e:
         logger.error(f"Scrape failed: {e}")
         db.log_scrape_end(scrape_id, total_drives_found, "error", str(e))
@@ -159,6 +211,8 @@ async def dashboard(request: Request, new_only: bool = False):
     last_scrape = db.get_last_scrape()
     settings = db.get_all_settings()
     stats = db.get_stats()
+    ram_deals = db.get_latest_ram_deals(new_only=new_only)
+    ram_stats = db.get_ram_stats()
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -167,6 +221,8 @@ async def dashboard(request: Request, new_only: bool = False):
             "last_scrape": last_scrape,
             "settings": settings,
             "stats": stats,
+            "ram_deals": ram_deals,
+            "ram_stats": ram_stats,
             "new_only": new_only,
         }
     )
@@ -252,7 +308,8 @@ async def api_status():
     return {
         "last_scrape": last,
         "next_scrape": next_run,
-        "live_scrape": live_scrape_state
+        "live_scrape": live_scrape_state,
+        "live_ram_scrape": live_ram_scrape_state
     }
 
 
@@ -314,6 +371,119 @@ async def api_get_hidden():
 async def api_unhide_listing(asin: str):
     db.unignore_asin(asin)
     return {"status": "ok", "asin": asin}
+
+
+# ── RAM Endpoints ──────────────────────────────────────────
+
+@app.get("/api/ram/deals")
+async def api_ram_deals(
+    new_only: bool = False,
+    min_gb: int = 4,
+    max_gb: int | None = None,
+    generation: str | None = None,
+    form_factor: str | None = None,
+    store: str | None = None,
+    sort_by: str = "aed_gb_asc",
+    limit: int = 500
+):
+    return db.get_latest_ram_deals(
+        new_only=new_only,
+        min_gb=min_gb,
+        max_gb=max_gb,
+        generation=generation,
+        form_factor=form_factor,
+        store=store,
+        sort_by=sort_by,
+        limit=limit
+    )
+
+
+@app.get("/api/ram/stats")
+async def api_ram_stats():
+    return db.get_ram_stats()
+
+
+@app.get("/api/ram/history/{sku}")
+async def api_ram_history(sku: str):
+    return db.get_ram_price_history(sku)
+
+
+@app.get("/api/ram/export/csv")
+async def api_ram_export_csv(
+    new_only: bool = False,
+    min_gb: int = 4,
+    generation: str | None = None,
+    form_factor: str | None = None,
+    store: str | None = None
+):
+    deals = db.get_latest_ram_deals(
+        new_only=new_only,
+        min_gb=min_gb,
+        generation=generation,
+        form_factor=form_factor,
+        store=store,
+        limit=5000
+    )
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Rank", "Store", "Model Number", "SKU", "Title", "Generation",
+        "Form Factor", "Capacity (GB)", "Kit Config", "Speed (MHz)", "CAS Latency",
+        "Price (AED)", "AED / GB", "All-Time Low Price (AED)", "All-Time Low AED/GB",
+        "Condition", "Is Record Low", "Product URL"
+    ])
+    for idx, d in enumerate(deals, 1):
+        writer.writerow([
+            idx,
+            d.get("store", "Amazon.ae"),
+            d.get("model_number", ""),
+            d.get("sku", ""),
+            d.get("title", ""),
+            d.get("generation", ""),
+            d.get("form_factor", ""),
+            d.get("capacity_gb", ""),
+            d.get("kit_config", ""),
+            d.get("speed_mhz", ""),
+            d.get("cas_latency", ""),
+            f"{d.get('price_aed', 0):.2f}",
+            f"{d.get('aed_per_gb', 0):.2f}",
+            f"{d.get('min_price', d.get('price_aed', 0)):.2f}",
+            f"{d.get('min_aed_per_gb', d.get('aed_per_gb', 0)):.2f}",
+            "Renewed" if d.get("is_renewed") else "New",
+            "Yes" if d.get("is_all_time_low") else "No",
+            d.get("url", "")
+        ])
+    filename = f"uae_ram_deals_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.post("/api/scrape/ram")
+async def api_trigger_ram_scrape():
+    """Trigger an immediate RAM scrape in a background thread."""
+    thread = threading.Thread(target=run_ram_scrape_job, daemon=True)
+    thread.start()
+    return {"status": "started", "message": "RAM scrape running in background"}
+
+
+@app.post("/api/ram/hide/{sku}")
+async def api_hide_ram_listing(sku: str):
+    db.ignore_ram(sku, reason="user_hidden")
+    return {"status": "ok", "sku": sku}
+
+
+@app.get("/api/ram/hidden")
+async def api_get_hidden_ram():
+    return db.get_ignored_ram_list()
+
+
+@app.post("/api/ram/unhide/{sku}")
+async def api_unhide_ram_listing(sku: str):
+    db.unignore_ram(sku)
+    return {"status": "ok", "sku": sku}
 
 
 # ── PWA ──────────────────────────────────────────────────────

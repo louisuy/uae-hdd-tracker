@@ -62,6 +62,40 @@ def init_db():
             reason TEXT DEFAULT 'user_hidden',
             ignored_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS ram_modules (
+            sku TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            generation TEXT NOT NULL DEFAULT 'DDR5',
+            form_factor TEXT NOT NULL DEFAULT 'Desktop (UDIMM)',
+            capacity_gb INTEGER NOT NULL,
+            speed_mhz INTEGER NOT NULL DEFAULT 0,
+            kit_config TEXT NOT NULL DEFAULT '1x',
+            cas_latency TEXT NOT NULL DEFAULT '',
+            store TEXT NOT NULL DEFAULT 'Amazon.ae',
+            model_number TEXT DEFAULT '',
+            is_renewed INTEGER NOT NULL DEFAULT 0,
+            url TEXT NOT NULL DEFAULT '',
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS ram_price_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sku TEXT NOT NULL REFERENCES ram_modules(sku),
+            price_aed REAL NOT NULL,
+            aed_per_gb REAL NOT NULL,
+            scraped_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ram_snapshots_sku ON ram_price_snapshots(sku);
+        CREATE INDEX IF NOT EXISTS idx_ram_snapshots_time ON ram_price_snapshots(scraped_at);
+
+        CREATE TABLE IF NOT EXISTS ignored_ram (
+            sku TEXT PRIMARY KEY,
+            reason TEXT DEFAULT 'user_hidden',
+            ignored_at TEXT NOT NULL
+        );
     """)
 
     # Migration: add recording_tech if table already existed without it
@@ -396,6 +430,251 @@ def get_ignored_list() -> list[dict]:
     """Returns detailed records of all ignored ASINs."""
     conn = get_conn()
     rows = conn.execute("SELECT * FROM ignored_asins ORDER BY ignored_at DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ── RAM Database Operations ──────────────────────────────────
+
+def upsert_ram(module: dict, scraped_at: str):
+    conn = get_conn()
+    sku = module["sku"]
+    store = module.get("store", "Amazon.ae")
+    model_number = module.get("model_number", "")
+    cas_latency = module.get("cas_latency", "")
+    existing = conn.execute("SELECT sku FROM ram_modules WHERE sku = ?", (sku,)).fetchone()
+    if existing:
+        conn.execute("""
+            UPDATE ram_modules
+            SET title=?, generation=?, form_factor=?, capacity_gb=?, speed_mhz=?,
+                kit_config=?, cas_latency=?, store=?, model_number=?, is_renewed=?, url=?, last_seen=?
+            WHERE sku=?
+        """, (
+            module["title"], module["generation"], module["form_factor"],
+            module["capacity_gb"], module.get("speed_mhz", 0), module.get("kit_config", "1x"),
+            cas_latency, store, model_number, 1 if module.get("is_renewed") else 0,
+            module.get("url", ""), scraped_at, sku
+        ))
+    else:
+        conn.execute("""
+            INSERT INTO ram_modules (
+                sku, title, generation, form_factor, capacity_gb, speed_mhz,
+                kit_config, cas_latency, store, model_number, is_renewed, url, first_seen, last_seen
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            sku, module["title"], module["generation"], module["form_factor"],
+            module["capacity_gb"], module.get("speed_mhz", 0), module.get("kit_config", "1x"),
+            cas_latency, store, model_number, 1 if module.get("is_renewed") else 0,
+            module.get("url", ""), scraped_at, scraped_at
+        ))
+
+    conn.execute("""
+        INSERT INTO ram_price_snapshots (sku, price_aed, aed_per_gb, scraped_at)
+        VALUES (?, ?, ?, ?)
+    """, (sku, module["price_aed"], module["aed_per_gb"], scraped_at))
+    conn.commit()
+    conn.close()
+
+
+def store_ram_scrape_results(ram_list: list):
+    now = datetime.now(timezone.utc).isoformat()
+    for m in ram_list:
+        upsert_ram(m, now)
+
+
+def get_latest_ram_deals(
+    new_only: bool = False,
+    min_gb: int = 4,
+    max_gb: int | None = None,
+    generation: str | None = None,
+    form_factor: str | None = None,
+    store: str | None = None,
+    sort_by: str = "aed_gb_asc",
+    limit: int = 500
+) -> list:
+    conn = get_conn()
+    query = """
+        SELECT r.sku, r.title, r.generation, r.form_factor, r.capacity_gb, r.speed_mhz,
+               r.kit_config, r.cas_latency, r.is_renewed, r.url,
+               COALESCE(r.store, 'Amazon.ae') AS store, COALESCE(r.model_number, '') AS model_number,
+               ps.price_aed, ps.aed_per_gb, ps.scraped_at,
+               (SELECT MIN(price_aed) FROM ram_price_snapshots WHERE sku = r.sku) AS min_price,
+               (SELECT MAX(price_aed) FROM ram_price_snapshots WHERE sku = r.sku) AS max_price,
+               (SELECT COUNT(*) FROM ram_price_snapshots WHERE sku = r.sku) AS history_count,
+               (SELECT price_aed FROM ram_price_snapshots WHERE sku = r.sku ORDER BY scraped_at DESC LIMIT 1 OFFSET 1) AS prev_price,
+               (SELECT price_aed FROM ram_price_snapshots WHERE sku = r.sku AND ABS(price_aed - ps.price_aed) >= 0.5 ORDER BY scraped_at DESC LIMIT 1) AS last_different_price
+        FROM ram_modules r
+        JOIN ram_price_snapshots ps ON r.sku = ps.sku
+        WHERE ps.id = (
+            SELECT id FROM ram_price_snapshots WHERE sku = r.sku ORDER BY scraped_at DESC LIMIT 1
+        )
+        AND r.capacity_gb >= ?
+    """
+    params = [min_gb]
+
+    if max_gb:
+        query += " AND r.capacity_gb <= ?"
+        params.append(max_gb)
+
+    if new_only:
+        query += " AND r.is_renewed = 0"
+
+    if generation and generation.lower() != "all":
+        query += " AND LOWER(r.generation) = ?"
+        params.append(generation.lower())
+
+    if form_factor and form_factor.lower() != "all":
+        query += " AND LOWER(r.form_factor) LIKE ?"
+        params.append(f"%{form_factor.lower()}%")
+
+    if store and store.lower() != "all":
+        query += " AND LOWER(r.store) LIKE ?"
+        params.append(f"%{store.lower()}%")
+
+    # Sorting
+    if sort_by == "min_aed_gb_asc":
+        query += " ORDER BY (min_price / r.capacity_gb) ASC"
+    elif sort_by == "speed_desc":
+        query += " ORDER BY r.speed_mhz DESC, ps.aed_per_gb ASC"
+    elif sort_by == "price_asc":
+        query += " ORDER BY ps.price_aed ASC"
+    elif sort_by == "capacity_desc":
+        query += " ORDER BY r.capacity_gb DESC, ps.aed_per_gb ASC"
+    else:  # default: aed_gb_asc
+        query += " ORDER BY ps.aed_per_gb ASC"
+
+    query += " LIMIT ?"
+    params.append(limit)
+
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    results = []
+    for r in rows:
+        d = dict(r)
+        curr = d["price_aed"]
+        prev = d["prev_price"]
+        last_diff = d["last_different_price"]
+        min_p = d["min_price"]
+        cap = d["capacity_gb"]
+
+        diff = 0.0
+        base_price = prev
+        if prev is not None and prev > 0:
+            imm_diff = curr - prev
+            if abs(imm_diff) >= 0.5:
+                diff = imm_diff
+                base_price = prev
+            elif last_diff is not None and (curr - last_diff) <= -0.5:
+                diff = curr - last_diff
+                base_price = last_diff
+
+        if base_price and base_price > 0 and abs(diff) >= 0.5:
+            pct = (diff / base_price) * 100
+            d["price_diff"] = round(diff, 2)
+            d["pct_diff"] = round(pct, 1)
+            d["prev_price"] = base_price
+        else:
+            d["price_diff"] = 0.0
+            d["pct_diff"] = 0.0
+
+        min_p = d["min_price"] if d["min_price"] is not None else curr
+        d["min_price"] = round(min_p, 2)
+        d["min_aed_per_gb"] = round(min_p / cap, 2) if cap and cap > 0 else d["aed_per_gb"]
+        d["is_all_time_low"] = (curr <= (min_p + 0.05))
+
+        results.append(d)
+
+    return results
+
+
+def get_ram_price_history(sku: str, limit: int = 100) -> dict:
+    conn = get_conn()
+    module = conn.execute("SELECT * FROM ram_modules WHERE sku = ?", (sku,)).fetchone()
+    if not module:
+        conn.close()
+        return {"module": None, "history": []}
+
+    rows = conn.execute("""
+        SELECT price_aed, aed_per_gb, scraped_at
+        FROM ram_price_snapshots WHERE sku = ?
+        ORDER BY scraped_at ASC LIMIT ?
+    """, (sku, limit)).fetchall()
+    conn.close()
+
+    history = [dict(r) for r in rows]
+    prices = [h["price_aed"] for h in history]
+    m_dict = dict(module)
+
+    return {
+        "module": m_dict,
+        "history": history,
+        "stats": {
+            "current": prices[-1] if prices else None,
+            "lowest": min(prices) if prices else None,
+            "highest": max(prices) if prices else None,
+            "average": round(sum(prices) / len(prices), 2) if prices else None,
+            "data_points": len(prices)
+        }
+    }
+
+
+def get_ram_stats() -> dict:
+    deals = get_latest_ram_deals(limit=1000)
+    if not deals:
+        return {
+            "total_ram": 0,
+            "best_ddr5": None,
+            "best_ddr4": None,
+            "best_sodimm": None,
+            "all_time_lows": 0
+        }
+
+    ddr5_deals = [d for d in deals if d["generation"] == "DDR5"]
+    ddr4_deals = [d for d in deals if d["generation"] == "DDR4"]
+    sodimm_deals = [d for d in deals if "sodimm" in d["form_factor"].lower()]
+    atls = sum(1 for d in deals if d.get("is_all_time_low"))
+
+    return {
+        "total_ram": len(deals),
+        "best_ddr5": ddr5_deals[0] if ddr5_deals else None,
+        "best_ddr4": ddr4_deals[0] if ddr4_deals else None,
+        "best_sodimm": sodimm_deals[0] if sodimm_deals else None,
+        "all_time_lows": atls
+    }
+
+
+def ignore_ram(sku: str, reason: str = "user_hidden"):
+    conn = get_conn()
+    now = datetime.now().isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO ignored_ram (sku, reason, ignored_at) VALUES (?, ?, ?)",
+        (sku, reason, now),
+    )
+    conn.execute("DELETE FROM ram_price_snapshots WHERE sku = ?", (sku,))
+    conn.execute("DELETE FROM ram_modules WHERE sku = ?", (sku,))
+    conn.commit()
+    conn.close()
+
+
+def unignore_ram(sku: str):
+    conn = get_conn()
+    conn.execute("DELETE FROM ignored_ram WHERE sku = ?", (sku,))
+    conn.commit()
+    conn.close()
+
+
+def get_ignored_ram() -> set[str]:
+    conn = get_conn()
+    rows = conn.execute("SELECT sku FROM ignored_ram").fetchall()
+    conn.close()
+    return {r["sku"] for r in rows}
+
+
+def get_ignored_ram_list() -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM ignored_ram ORDER BY ignored_at DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
